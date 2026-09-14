@@ -15,7 +15,10 @@ const SKIPPED_EXTENSIONS = new Set([
 // PEM header, ...), used to unit-test the detector itself. Exempting them
 // by exact path — never a broad "*.test.*" glob — keeps every other test
 // file covered by the scan.
-const SELF_TEST_FIXTURES = new Set(['scripts/lib/secret-scan.test.mjs'])
+const SELF_TEST_FIXTURES = new Set([
+  'scripts/lib/secret-scan.test.mjs',
+  'src/lib/ingestion/error-summary.test.ts',
+])
 
 function listCandidateFiles() {
   // Tracked + untracked-but-not-gitignored files, so a stray secret file
