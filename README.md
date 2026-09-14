@@ -12,9 +12,11 @@ yet — that is M2 and later.
 
 ## Requirements
 
-- Node.js ≥ 20.9 with [Corepack](https://nodejs.org/api/corepack.html)
-  enabled (`corepack enable`). This project pins `pnpm@10.18.0` via
-  `packageManager` in `package.json`; do not use the machine's global `npm`.
+- Node.js 24.x with [Corepack](https://nodejs.org/api/corepack.html) enabled
+  (`corepack enable`). This project pins `pnpm@10.18.0` via `packageManager`
+  in `package.json`; do not use the machine's global `npm`. Node 24.x is
+  required because Vite 7 (a Vitest dependency) needs Node 20.19+ or
+  22.12+ — Vercel also supports and defaults new projects to Node 24.x.
 
 ## Getting started
 

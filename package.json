@@ -5,7 +5,7 @@
   "description": "PFE Finder — computer science internship search for Morocco and France.",
   "packageManager": "pnpm@10.18.0",
   "engines": {
-    "node": ">=20.9.0"
+    "node": "24.x"
   },
   "type": "module",
   "scripts": {
