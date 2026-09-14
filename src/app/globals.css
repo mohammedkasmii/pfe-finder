@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens for PFE Finder's visual direction: an editorial serif
+ * paired with a technical sans, a warm paper/ink palette, and a deep-teal
+ * / terracotta accent duo — deliberately not the flag colors of either
+ * country. See the visual-direction reference published during planning
+ * for the full rationale.
+ *
+ * `--next-font-display` / `--next-font-body` are set by `next/font/google`
+ * on the `<html>` element in `src/app/layout.tsx`; they already carry their
+ * own fallback stacks, so `--font-display` / `--font-body` below just add
+ * the Tailwind `font-display` / `font-body` utilities on top of them.
+ */
+@theme {
+  --font-display: var(--next-font-display), Georgia, serif;
+  --font-body: var(--next-font-body), system-ui, sans-serif;
+
+  --color-paper: #faf7f1;
+  --color-paper-raised: #ffffff;
+  --color-ink: #201c16;
+  --color-ink-soft: #55503f;
+  --color-ink-muted: #7a7461;
+  --color-ink-invert: #d9d4c4;
+  --color-line: #e4decf;
+  --color-primary: #0f6b66;
+  --color-primary-dark: #0b5450;
+  --color-accent: #c1592c;
+  --color-accent-dark: #a34823;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgba(32, 28, 22, 0.06);
+  --shadow-card-hover: 0 8px 24px -12px rgba(32, 28, 22, 0.18);
+
+  --text-display: 2.25rem;
+  --text-display-lg: 3.25rem;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  padding: 12px 20px;
+  border-radius: 0 0 8px 0;
+  z-index: 50;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* Thin technical "ruler" motif used as a section accent. Decorative only. */
+.tick-divider {
+  height: 6px;
+  background-image: repeating-linear-gradient(90deg, var(--color-primary) 0 2px, transparent 2px 24px);
+}

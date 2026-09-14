@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+
+# test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# local environment — never commit real values
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+!.env.example
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# misc
+*.log
+npm-debug.log*
+yarn-error.log*
+.vercel/
+.turbo/
+tsconfig.tsbuildinfo
