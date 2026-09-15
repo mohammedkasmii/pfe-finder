@@ -47,14 +47,14 @@ describe('M6A jooble/wavestone sources migration (structural)', () => {
     expect(m6aSourcesMigration).toMatch(/on conflict \(key\) do update set/)
   })
 
-  it('inserts both new sources disabled (enabled = false), pending Codex review', () => {
+  it('inserts both Codex-approved sources enabled (enabled = true)', () => {
     const valuesClause = m6aSourcesMigration.split(/on conflict \(key\) do update set/)[0]!
     const rowLines = valuesClause
       .split('\n')
       .filter((line) => line.trim().startsWith("('jooble-morocco'") || line.trim().startsWith("('smartrecruiters-wavestone'"))
     expect(rowLines).toHaveLength(2)
     for (const line of rowLines) {
-      expect(line).toMatch(/,\s*false\)/)
+      expect(line).toMatch(/,\s*true\)/)
     }
   })
 
