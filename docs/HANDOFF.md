@@ -2,9 +2,9 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
-## 2026-09-15 — Claude → Codex — post-deployment correction: hero CTA + classifier false positives (updated after two rounds of CHANGES_REQUESTED)
+## 2026-09-15 — Claude → Codex — post-deployment correction: hero CTA + classifier false positives (updated after three rounds of CHANGES_REQUESTED)
 
-Small, focused correction against the reviewed production URL (`https://pfe-finder.vercel.app/`). Not tied to a milestone (all of M1–M5/R1–R5 are `ACCEPTED`); no `docs/TASKS.md` change made or needed. **Updated in place** after two rounds of Codex `CHANGES_REQUESTED` review (the classifier domain gate + secret-scanner fix, then a production follow-up on the experience-level rule), rather than appending further entries — see the "Codex review correction" and "Production follow-up correction" subsections below.
+Small, focused correction against the reviewed production URL (`https://pfe-finder.vercel.app/`). Not tied to a milestone (all of M1–M5/R1–R5 are `ACCEPTED`); no `docs/TASKS.md` change made or needed. **Updated in place** after three rounds of Codex `CHANGES_REQUESTED` review (the classifier domain gate + secret-scanner fix; a production follow-up on the experience-level rule; then a second production follow-up on obviously senior titles mislabeled `experienceLevel.id="internship"`), rather than appending further entries — see the "Codex review correction" and two "Production follow-up correction" subsections below.
 
 ### 1. Hero CTA fix
 
@@ -45,11 +45,24 @@ For a **neutral** signal, `classifyPosting` now falls back to an explicit intern
 
 New regressions (`classification.test.ts` + `postings.ts` fixtures): both SAP HYBRIS/ARIBA titles with `experienceLevelId: 'not_applicable'` accepted; `not_applicable`/`entry_level`/mixed-case neutral values accepted when the title has an internship keyword; a CS role with no internship keyword in its title accepted when `experienceLevelId="internship"` (positive overrides title wording); the FP1-shaped permanent-role title rejected across `undefined`/`associate`/`not_applicable`/`entry_level` experience-level values (parameterized test) — proving the rejection no longer depends on the id being exactly `"associate"`; and all three original confirmed false positives, plus the valid Inetum PFE fixture, still pass under the new rule. The title-only domain exclusions (`isHardExcludedTitle`), the secret-scanner fix, and the hero CTA fix from the prior round are unchanged.
 
+#### Production follow-up correction #2: title-only seniority rejection, checked before the experienceLevel signal
+
+The **next successful collector run** correctly restored both SAP listings and kept the three original false positives deactivated, but two clearly senior roles became public because SmartRecruiters labeled them `experienceLevel.id="internship"` despite being obviously senior by title: ID 744000114931649 ("Fullstack Java/Angular - Sénior", `typeOfEmployment.id="intern"`) and ID 744000100201445 ("LEAD IA & AGENTIC (H/F) (SENIOR)", `typeOfEmployment.id="permanent"`). Under the previous rule, `experienceLevel.id="internship"` was unconditionally authoritative-positive — it bypassed every other check, including an obviously senior title.
+
+Added `isSeniorTitle()`, checked **first**, before `experienceLevelSignal()` is even consulted — an obviously senior title must never be overridden by erroneous provider metadata:
+
+- `senior`/`sénior`, `confirmé`/`confirmée`, `manager`, `director`/`directeur`/`directrice`, `head of`, `executive` — bare title words, each specific enough to be safe.
+- `lead` — deliberately **not** matched bare (that would reject an unrelated title like "... lead generation platform"). Only counts when paired with a role noun: `Lead IA`/`Lead Developer`/`Lead Engineer`/`Lead Ingénieur`/`Lead Développeur`, or `Tech Lead`/`AI Lead`.
+
+Title-only, exactly like the domain-exclusion gate — a description mentioning seniority terms never triggers it.
+
+New regressions (`classification.test.ts` + `postings.ts` fixtures): both exact production titles rejected with `experienceLevelId="internship"`; a duplicate "Fullstack Java/Angular - Sénior" record (SmartRecruiters ID 744000119373632, `mid_senior_level`) still rejected; a parameterized case covering `Lead Developer`, `Lead Engineer`, `Tech Lead`, `AI Lead`, `Manager Data`, `Directeur Technique`, `Director of Engineering`, `Head of Engineering`, and `Executive Assistant`, each rejected even with `experienceLevelId="internship"`; `"Software engineering internship — lead generation platform"` still **accepted** (bare "lead" as an unrelated product term); and every fixture from the prior two rounds — normal Stage/Stagiaire/PFE software/SAP/data/cybersecurity/cloud cases, and all three original false positives — still passes.
+
 **Plumbing** (unchanged since the first pass): `src/lib/sources/smartrecruiters/schema.ts` adds a bounded, optional `ProviderMetadataFieldSchema` (`{ id?: string }`, ≤100 chars) for `experienceLevel` and `typeOfEmployment` (both commonly absent — schema stays permissive). `src/lib/sources/smartrecruiters/normalize.ts` passes `detail.experienceLevel?.id` through to `classifyPosting` as trusted, normalized provider metadata — never inferred from free text.
 
-**Regression coverage**: `src/lib/ingestion/fixtures/postings.ts` has six fixtures — the valid Inetum PFE case, the two valid SAP HYBRIS/ARIBA cases (all `expectAccepted: true`), and all three false-positive patterns (`expectAccepted: false`), run through the existing fixture-driven loop in `classification.test.ts`. `classification.test.ts` has two relevant `describe` blocks: the experience-level + title-signal gate (positive/negative/neutral cases above, including the parameterized permanent-role-title regression) and the title-only hard domain exclusion (rejects the two confirmed-FP title patterns; still accepts a genuine cloud/DevOps internship legitimately mentioning GCP; accepts the two Codex-requested positive cases; accepts a description-only mention of these domains). `normalize.test.ts` and `schema.test.ts` are unchanged (experience-level end-to-end + schema bounds).
+**Regression coverage**: `src/lib/ingestion/fixtures/postings.ts` has nine fixtures — the valid Inetum PFE case, the two valid SAP HYBRIS/ARIBA cases (all `expectAccepted: true`), the three original false-positive patterns, and the two senior-title false positives plus the duplicate mid_senior_level record (all `expectAccepted: false`), run through the existing fixture-driven loop in `classification.test.ts`. `classification.test.ts` has three relevant `describe` blocks: the experience-level + title-signal gate (positive/negative/neutral cases, including the parameterized permanent-role-title regression), the title-only hard domain exclusion, and the title-only seniority rejection (this round). `normalize.test.ts` and `schema.test.ts` are unchanged (experience-level end-to-end + schema bounds).
 
-**Unchanged, confirmed preserved**: complete-scan deactivation (`src/lib/collector/run.ts`/`finalize_completed_run` — untouched; the next successful collector run will both keep the three false positives deactivated and bring the two SAP listings back to active, since a passing `classifyPosting` result makes them a candidate again); SSRF/URL allowlisting, HTML sanitization, RLS, rate limiting, and secret handling (no files in those areas touched).
+**Unchanged, confirmed preserved**: the three-valued `experienceLevelSignal()` behavior, the title-only domain exclusions, the hero CTA fix, the secret-scanner fix, database/RLS, and collector finalization (`src/lib/collector/run.ts`/`finalize_completed_run` — untouched; the next successful collector run will deactivate these two now-rejected rows automatically, the same as any other posting no longer returned by classification).
 
 ### 3. Secret scanner env-reference false positive
 
@@ -67,15 +80,17 @@ One correctness note fixed while implementing this: the pattern now carries the 
 
 ### Verification
 
-**This round** (production follow-up — classification/normalization only, per instruction):
-- `pnpm exec vitest run src/lib/ingestion/classification.test.ts src/lib/sources/smartrecruiters/normalize.test.ts src/lib/sources/smartrecruiters/schema.test.ts` — 73/73 passed.
+**This round** (second production follow-up — classification/normalization only, per instruction):
+- `pnpm exec vitest run src/lib/ingestion/classification.test.ts src/lib/sources/smartrecruiters/normalize.test.ts src/lib/sources/smartrecruiters/schema.test.ts` — 89/89 passed.
 - `pnpm typecheck` — clean.
 - `pnpm lint` — clean.
 - `pnpm scan:secrets` — clean, 166 files scanned, no issues found.
 
-**Re-confirmed unaffected** (hero CTA + secret-scanner fix — source and tests untouched this round, but re-run for this update to have fresh evidence): `pnpm exec vitest run src/components/site-sections.test.tsx scripts/lib/secret-scan.test.mjs` — 28/28 passed.
+**Prior round** (first production follow-up — three-valued experienceLevel.id): 73/73 passed on the same three test files.
 
-Did not run PostgreSQL, Playwright, the full unit suite, dependency audit, or a production build in either round (no focused failure required it). Not committed, pushed, deployed, or ran the collector.
+**Re-confirmed unaffected** (hero CTA + secret-scanner fix — source and tests untouched across all three rounds): `pnpm exec vitest run src/components/site-sections.test.tsx scripts/lib/secret-scan.test.mjs` — 28/28 passed (last re-run in the prior round).
+
+Did not run PostgreSQL, Playwright, the full unit suite, dependency audit, or a production build in any round (no focused failure required it). Not committed, pushed, deployed, or ran the collector.
 
 ## 2026-09-15 — Codex — M5 and repository delivery accepted
 

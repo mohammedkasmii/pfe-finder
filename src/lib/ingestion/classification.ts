@@ -27,6 +27,24 @@ const INTERNSHIP_KEYWORDS = /\bstage\b|\bstagiaire\b|\binternship\b|\bintern\b/i
 const EXCLUDED_CONTRACT_KEYWORDS =
   /\bcdi\b|\bcdd\b|\bfreelance\b|\bind[ée]pendant\b|\balternance\b|\bapprentissage\b|contrat de professionnalisation|\bwork[- ]study\b|\bfull[- ]time employee\b|\bpermanent position\b/i
 
+// Title-only seniority/experienced-role rejection — checked BEFORE the
+// provider's own experienceLevel signal (below), because SmartRecruiters
+// can mislabel an obviously senior role as experienceLevel.id="internship"
+// (confirmed production false positives: SmartRecruiters ID 744000114931649
+// "Fullstack Java/Angular - Sénior" and ID 744000100201445 "LEAD IA &
+// AGENTIC (H/F) (SENIOR)", both experienceLevel.id="internship"). An
+// obviously senior title must never be overridden by erroneous provider
+// metadata. Deliberately narrow: "lead" alone is NOT matched (that would
+// reject an unrelated title like "... lead generation platform") — it only
+// counts when paired with a role noun ("Lead IA"/"AI Lead"/"Tech
+// Lead"/"Lead Developer"/"Lead Engineer").
+const SENIORITY_TITLE_KEYWORDS =
+  /\bs[ée]nior\b|\bconfirm[ée]e?\b|\bmanager\b|\bdirector\b|\bdirecteur\b|\bdirectrice\b|\bhead of\b|\bexecutive\b|\blead\s+(ia|ai|d[ée]veloppeurs?|developers?|ing[ée]nieurs?|engineers?)\b|\b(tech|ai|ia)[\s-]lead\b/i
+
+function isSeniorTitle(title: string): boolean {
+  return SENIORITY_TITLE_KEYWORDS.test(title)
+}
+
 // Known SmartRecruiters experienceLevel.id values that authoritatively mean
 // "not an internship" (production review: confirmed false positive
 // SmartRecruiters ID 744000093240108 has experienceLevel.id="associate").
@@ -110,6 +128,10 @@ const PFE_PHRASES =
  */
 export function classifyPosting(input: ClassificationInput): ClassificationResult | null {
   const text = `${input.title}\n${input.descriptionText}`
+
+  // Checked first, before any experienceLevel signal: see
+  // SENIORITY_TITLE_KEYWORDS's doc comment above.
+  if (isSeniorTitle(input.title)) return null
 
   // Internship-role identification: combines the source's own structured
   // experience-level field (far more reliable than free text — "stage de

@@ -177,6 +177,63 @@ describe('classifyPosting — title-only hard domain exclusion (Codex review cor
   })
 })
 
+describe('classifyPosting — title-only seniority rejection overrides erroneous experienceLevel="internship" (production follow-up correction)', () => {
+  it('rejects "Fullstack Java/Angular - Sénior" even with experienceLevelId="internship"', () => {
+    const result = classifyPosting({
+      title: 'Fullstack Java/Angular - Sénior',
+      descriptionText: 'Poste de développeur fullstack confirmé, Java, Angular.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('rejects "LEAD IA & AGENTIC (H/F) (SENIOR)" even with experienceLevelId="internship"', () => {
+    const result = classifyPosting({
+      title: 'LEAD IA & AGENTIC (H/F) (SENIOR)',
+      descriptionText: 'Poste de lead technique en intelligence artificielle et systèmes agentiques.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('rejects the duplicate senior Fullstack record with experienceLevelId="mid_senior_level"', () => {
+    const result = classifyPosting({
+      title: 'Fullstack Java/Angular - Sénior',
+      descriptionText: 'Poste de développeur fullstack confirmé, Java, Angular.',
+      experienceLevelId: 'mid_senior_level',
+    })
+    expect(result).toBeNull()
+  })
+
+  it.each([
+    'Lead Developer',
+    'Lead Engineer',
+    'Tech Lead',
+    'AI Lead',
+    'Manager Data',
+    'Directeur Technique',
+    'Director of Engineering',
+    'Head of Engineering',
+    'Executive Assistant',
+  ])('rejects a title containing the seniority signal "%s" even with experienceLevelId="internship"', (title) => {
+    const result = classifyPosting({
+      title,
+      descriptionText: 'Développement logiciel, informatique, gestion des équipes techniques.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('does NOT reject a bare "lead" used as an unrelated product/platform term, not a seniority role title', () => {
+    const result = classifyPosting({
+      title: 'Software engineering internship — lead generation platform',
+      descriptionText: 'Backend internship building our lead generation platform in TypeScript and PostgreSQL.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+})
+
 describe('classifyPosting — PFE phrase must match an apostrophe, not any character', () => {
   it('does not treat "dXétudes" as the PFE phrase (regression: `.` wildcard in the pattern)', () => {
     const result = classifyPosting({

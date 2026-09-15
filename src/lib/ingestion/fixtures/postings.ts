@@ -174,4 +174,28 @@ export const POSTING_FIXTURES: PostingFixture[] = [
     expectAccepted: true,
     expectIsPfe: true,
   },
+  {
+    description:
+      'Production false positive (SmartRecruiters ID 744000114931649): obviously senior title "Sénior", mislabeled experienceLevel="internship" must not override it',
+    title: 'Fullstack Java/Angular - Sénior',
+    descriptionHtml: '<p>Poste de développeur fullstack confirmé, Java, Angular, architecture logicielle.</p>',
+    experienceLevelId: 'internship',
+    expectAccepted: false,
+  },
+  {
+    description:
+      'Production false positive (SmartRecruiters ID 744000100201445): obviously senior title "LEAD IA" + "(SENIOR)", mislabeled experienceLevel="internship" must not override it',
+    title: 'LEAD IA & AGENTIC (H/F) (SENIOR)',
+    descriptionHtml: '<p>Poste de lead technique en intelligence artificielle et systèmes agentiques.</p>',
+    experienceLevelId: 'internship',
+    expectAccepted: false,
+  },
+  {
+    description:
+      'Duplicate senior Fullstack record (SmartRecruiters ID 744000119373632), correctly marked experienceLevel="mid_senior_level", already and still rejected',
+    title: 'Fullstack Java/Angular - Sénior',
+    descriptionHtml: '<p>Poste de développeur fullstack confirmé, Java, Angular, architecture logicielle.</p>',
+    experienceLevelId: 'mid_senior_level',
+    expectAccepted: false,
+  },
 ]
