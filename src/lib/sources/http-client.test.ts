@@ -120,6 +120,64 @@ describe('fetchAllowlistedJson', () => {
     expect(result).toMatchObject({ ok: false, kind: 'deterministic', reason: 'schema validation failed' })
   })
 
+  describe('schema-failure diagnostics (safe: path/code/expected only, never a received value)', () => {
+    it('includes a bounded, value-free schemaIssues summary on a schema mismatch', async () => {
+      const fetchImpl = vi.fn(async () => jsonResponse({ ok: 'not-a-boolean-secret-value-12345' }))
+      const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', Schema, baseOptions(fetchImpl))
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.schemaIssues).toBeDefined()
+      expect(result.schemaIssues!.length).toBeGreaterThan(0)
+      const issue = result.schemaIssues![0]!
+      expect(issue.path).toBe('ok')
+      expect(typeof issue.code).toBe('string')
+      if (issue.expected !== undefined) expect(issue.expected).toBe('boolean')
+    })
+
+    it('never includes the actual received value anywhere in schemaIssues', async () => {
+      const sensitiveValue = 'sk-sample-secret-value-should-never-appear'
+      const fetchImpl = vi.fn(async () => jsonResponse({ ok: sensitiveValue }))
+      const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', Schema, baseOptions(fetchImpl))
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      const serialized = JSON.stringify(result.schemaIssues)
+      expect(serialized).not.toContain(sensitiveValue)
+    })
+
+    it('reports "(root)" as the path for a top-level shape mismatch', async () => {
+      const fetchImpl = vi.fn(async () => new Response('null', { status: 200 }))
+      const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', Schema, baseOptions(fetchImpl))
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.schemaIssues?.[0]?.path).toBe('(root)')
+    })
+
+    it('bounds the number of reported issues even when many fields fail at once', async () => {
+      const ManySchema = z.object({
+        a: z.boolean(),
+        b: z.boolean(),
+        c: z.boolean(),
+        d: z.boolean(),
+        e: z.boolean(),
+        f: z.boolean(),
+        g: z.boolean(),
+      })
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1 }),
+      )
+      const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', ManySchema, baseOptions(fetchImpl))
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.schemaIssues!.length).toBeLessThanOrEqual(5)
+    })
+
+    it('never returns schemaIssues on success', async () => {
+      const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }))
+      const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', Schema, baseOptions(fetchImpl))
+      expect(result).not.toHaveProperty('schemaIssues')
+    })
+  })
+
   it('treats a 500 as transient', async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 500 }))
     const result = await fetchAllowlistedJson('https://api.smartrecruiters.com/x', Schema, baseOptions(fetchImpl))

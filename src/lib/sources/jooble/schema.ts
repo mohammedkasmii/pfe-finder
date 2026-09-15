@@ -47,15 +47,36 @@ const JoobleJobIdSchema = z
   ])
   .transform((value) => String(value))
 
+/**
+ * Production incident (docs/HANDOFF.md M6A): real Jooble job records return
+ * explicit JSON `null` for optional fields the documentation presents as
+ * strings — `z.string().optional()` alone only tolerates a MISSING key,
+ * not an explicit `null` value, so every such record failed
+ * `JoobleSearchResponseSchema` entirely and the whole scan errored with no
+ * offers imported. Accepts a bounded string, `null`, or absence, and
+ * transforms `null` to `undefined` at this schema boundary so every
+ * downstream consumer (`JoobleJob`'s inferred type, normalization) keeps
+ * seeing exactly `string | undefined` as before — never broadened to
+ * accept any other type, and never `z.coerce.string()`.
+ */
+function nullableOptionalString(maxLength: number) {
+  return z
+    .string()
+    .max(maxLength)
+    .nullable()
+    .optional()
+    .transform((value) => value ?? undefined)
+}
+
 export const JoobleJobSchema = z.object({
   id: JoobleJobIdSchema,
   title: z.string().min(1).max(MAX_TITLE_LENGTH),
-  location: z.string().max(MAX_LOCATION_LENGTH).optional(),
-  snippet: z.string().max(MAX_SNIPPET_LENGTH).optional(),
-  type: z.string().max(MAX_TYPE_LENGTH).optional(),
+  location: nullableOptionalString(MAX_LOCATION_LENGTH),
+  snippet: nullableOptionalString(MAX_SNIPPET_LENGTH),
+  type: nullableOptionalString(MAX_TYPE_LENGTH),
   link: z.url().max(MAX_URL_LENGTH),
-  company: z.string().max(MAX_COMPANY_LENGTH).optional(),
-  updated: z.string().max(MAX_UPDATED_LENGTH).optional(),
+  company: nullableOptionalString(MAX_COMPANY_LENGTH),
+  updated: nullableOptionalString(MAX_UPDATED_LENGTH),
 })
 export type JoobleJob = z.infer<typeof JoobleJobSchema>
 

@@ -2,9 +2,26 @@ import type { z } from 'zod'
 import { validateAllowlistedHttpsUrl } from '../ingestion/urls'
 
 export type FetchFailureKind = 'transient' | 'deterministic'
+
+/**
+ * A single schema-validation failure, safe to surface in a log line or
+ * `ingestion_runs.error_summary`: only the failing field's location
+ * (`path`), Zod's issue `code`, and — only when Zod exposes it as a plain
+ * type-name string (e.g. `"string"`) — the `expected` type. Never the
+ * actual received value, the response body, or anything else
+ * value-shaped. If a future Zod version doesn't expose a safe string for
+ * `expected`, `expected` is simply omitted; `path`/`code` alone are always
+ * safe and always present.
+ */
+export interface SchemaIssueSummary {
+  path: string
+  code: string
+  expected?: string
+}
+
 export type FetchJsonResult<T> =
   | { ok: true; data: T }
-  | { ok: false; reason: string; kind: FetchFailureKind }
+  | { ok: false; reason: string; kind: FetchFailureKind; schemaIssues?: SchemaIssueSummary[] }
 
 export interface FetchJsonOptions {
   timeoutMs: number
@@ -112,7 +129,14 @@ export async function fetchAllowlistedJson<T>(
       }
 
       const parsed = schema.safeParse(json)
-      if (!parsed.success) return { ok: false, reason: 'schema validation failed', kind: 'deterministic' }
+      if (!parsed.success) {
+        return {
+          ok: false,
+          reason: 'schema validation failed',
+          kind: 'deterministic',
+          schemaIssues: summarizeSchemaIssuesSafely(parsed.error),
+        }
+      }
       return { ok: true, data: parsed.data }
     }
     return { ok: false, reason: 'too many redirects', kind: 'deterministic' }
@@ -165,6 +189,31 @@ async function readBoundedText(response: Response, maxBytes: number, signal: Abo
   } finally {
     if (onAbort) signal.removeEventListener('abort', onAbort)
   }
+}
+
+const MAX_SCHEMA_ISSUES = 5
+const MAX_SCHEMA_ISSUE_FIELD_LENGTH = 200
+
+/**
+ * Extracts a small, bounded, value-free summary of a `ZodError` — see
+ * `SchemaIssueSummary`'s doc comment for exactly what is and isn't safe to
+ * include. Deliberately never reads `.message` (its exact wording is
+ * version-dependent and, for a custom `.refine()`, developer-controlled —
+ * neither is a guarantee against ever echoing input) — only the
+ * structured `path`/`code`/`expected` fields, and only when `expected` is
+ * confirmed to be a plain string.
+ */
+function summarizeSchemaIssuesSafely(error: z.ZodError): SchemaIssueSummary[] {
+  return error.issues.slice(0, MAX_SCHEMA_ISSUES).map((issue) => {
+    const path = (issue.path.length > 0 ? issue.path.map(String).join('.') : '(root)').slice(
+      0,
+      MAX_SCHEMA_ISSUE_FIELD_LENGTH,
+    )
+    const summary: SchemaIssueSummary = { path, code: issue.code }
+    const expected = (issue as { expected?: unknown }).expected
+    if (typeof expected === 'string') summary.expected = expected.slice(0, MAX_SCHEMA_ISSUE_FIELD_LENGTH)
+    return summary
+  })
 }
 
 function makeAbortError(): Error {

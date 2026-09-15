@@ -2,6 +2,12 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-16 — Codex — Jooble live schema correction accepted
+
+The first production run after M6A activation confirmed that the Jooble endpoint and credential returned successful JSON, but the response failed `JoobleSearchResponseSchema`; all SmartRecruiters sources completed and existing Jooble data remained protected by incomplete-scan handling. The exact field mismatch was not present in the original sanitized log. This correction adds bounded `null` handling for Jooble's optional `location`, `snippet`, `type`, `company`, and `updated` fields, normalizing each to `undefined`, plus value-free schema diagnostics for any remaining mismatch. Required `title`/`link`, ID validation, source allowlisting, redirect rejection, quota behavior, classification, database logic, and workflow configuration are unchanged.
+
+Codex reviewed the implementation and reran the scoped checks: 89/89 Jooble and HTTP-client tests passed, followed by clean typecheck, lint, and secret scan (178 files). The correction is accepted pending confirmation from the next live collector run; that run will distinguish this null-field hypothesis from any additional live response variation.
+
 ## 2026-09-16 — Codex — M6A accepted; R6A accepted
 
 M6A and R6A are `ACCEPTED`. The numeric-Jooble-job-ID correction was verified; 95 focused M6A tests passed during this review. `jooble-morocco` and `smartrecruiters-wavestone` are approved for activation — both changed from `PENDING_CODEX_REVIEW` to `APPROVED` in `docs/SOURCES.md`, and `supabase/migrations/20260916010000_m6a_jooble_and_wavestone_sources.sql` now inserts both `enabled = true` (its `on conflict` clause still excludes `enabled`, so a later manual disable survives re-running it). No implementation, test, query, classification, workflow, or secret-handling code was changed — this is an approval-state update only.

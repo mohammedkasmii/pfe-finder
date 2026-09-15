@@ -1,7 +1,7 @@
 import { boundedErrorSummary } from '../../ingestion/error-summary'
 import type { CollectionResult, NormalizedCandidate } from '../../ingestion/types'
 import type { SourceAdapter } from '../adapter'
-import { fetchAllowlistedJson } from '../http-client'
+import { fetchAllowlistedJson, type SchemaIssueSummary } from '../http-client'
 import type { JoobleSourceConfig } from '../registry'
 import { normalizeJoobleJob } from './normalize'
 import { JoobleSearchResponseSchema, type JoobleJob } from './schema'
@@ -33,6 +33,22 @@ const JOOBLE_HOST = 'ma.jooble.org'
 // variable is simply never referenced by any string passed to an error
 // constructor, log call, or `errorSummary` field anywhere in this file).
 const ERROR_LABEL = 'Jooble API request failed'
+
+/**
+ * Appends safe, bounded schema-failure diagnostics (field path, Zod issue
+ * code, and — only when available as a plain type name — the expected
+ * type) to the constant error label. Never the response body, job
+ * content, URL, or API key: `schemaIssues` (from `fetchAllowlistedJson`)
+ * is already stripped down to that shape before it ever reaches this
+ * function (docs/HANDOFF.md M6A production incident).
+ */
+function describeFailure(reason: string, schemaIssues: SchemaIssueSummary[] | undefined): string {
+  if (!schemaIssues || schemaIssues.length === 0) return `${ERROR_LABEL}: ${reason}`
+  const details = schemaIssues
+    .map((issue) => (issue.expected ? `${issue.path}:${issue.code}(expected ${issue.expected})` : `${issue.path}:${issue.code}`))
+    .join(', ')
+  return `${ERROR_LABEL}: ${reason} [${details}]`
+}
 
 // Exactly two fixed searches per run (docs/SOURCES.md): no user-provided
 // keywords, locations, hosts, or URLs are ever accepted, and no unlimited
@@ -114,7 +130,7 @@ export function createJoobleAdapter(options: JoobleAdapterOptions): SourceAdapte
         const result = await runSearch(search, apiKey)
         if (!result.ok) {
           scanComplete = false
-          errorSummary = boundedErrorSummary(`${ERROR_LABEL}: ${result.reason}`)
+          errorSummary = boundedErrorSummary(describeFailure(result.reason, result.schemaIssues))
           continue
         }
 

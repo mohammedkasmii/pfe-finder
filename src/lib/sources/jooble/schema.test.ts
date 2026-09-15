@@ -118,6 +118,53 @@ describe('JoobleJobSchema — id accepts both official-API numeric and string sh
   })
 })
 
+describe('JoobleJobSchema — null optional fields (production incident, docs/HANDOFF.md M6A)', () => {
+  it('accepts null for location, snippet, type, company, and updated, transforming each to undefined', () => {
+    const result = JoobleJobSchema.safeParse({
+      ...validJob,
+      location: null,
+      snippet: null,
+      type: null,
+      company: null,
+      updated: null,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.location).toBeUndefined()
+      expect(result.data.snippet).toBeUndefined()
+      expect(result.data.type).toBeUndefined()
+      expect(result.data.company).toBeUndefined()
+      expect(result.data.updated).toBeUndefined()
+    }
+  })
+
+  it('accepts a mix of null and absent optional fields alongside a present one', () => {
+    const rest: Record<string, unknown> = { ...validJob, location: null }
+    delete rest.snippet
+    const result = JoobleJobSchema.safeParse(rest)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.location).toBeUndefined()
+      expect(result.data.snippet).toBeUndefined()
+      expect(result.data.type).toBe('Internship')
+    }
+  })
+
+  it('still rejects an oversized string value even when null is also accepted for the same field', () => {
+    expect(JoobleJobSchema.safeParse({ ...validJob, location: 'x'.repeat(301) }).success).toBe(false)
+  })
+
+  it('still requires title and link, and null is not accepted for either', () => {
+    expect(JoobleJobSchema.safeParse({ ...validJob, title: null }).success).toBe(false)
+    expect(JoobleJobSchema.safeParse({ ...validJob, link: null }).success).toBe(false)
+  })
+
+  it('does not broadly accept arbitrary types for a nullable field — a number or object still fails', () => {
+    expect(JoobleJobSchema.safeParse({ ...validJob, location: 42 }).success).toBe(false)
+    expect(JoobleJobSchema.safeParse({ ...validJob, snippet: { html: '<p>x</p>' } }).success).toBe(false)
+  })
+})
+
 describe('JoobleSearchResponseSchema bounds', () => {
   it('accepts a well-formed response', () => {
     expect(JoobleSearchResponseSchema.safeParse({ totalCount: 1, jobs: [validJob] }).success).toBe(true)
@@ -138,6 +185,23 @@ describe('JoobleSearchResponseSchema bounds', () => {
 
   it('rejects a malformed job inside an otherwise valid response', () => {
     expect(JoobleSearchResponseSchema.safeParse({ totalCount: 1, jobs: [{ id: '1' }] }).success).toBe(false)
+  })
+
+  it('accepts a complete response whose jobs carry null optional fields (the observed production failure shape) without failing the whole response', () => {
+    const jobs = [
+      { id: '1', title: 'Stage informatique', link: 'https://ma.jooble.org/desc/1', location: null, snippet: null, type: null, company: null, updated: null },
+      { id: '2', title: 'PFE informatique', link: 'https://ma.jooble.org/desc/2', location: 'Rabat', snippet: '<p>PFE</p>', type: 'Stage', company: 'Acme', updated: '2026-01-01 00:00:00' },
+    ]
+    const result = JoobleSearchResponseSchema.safeParse({ totalCount: 2, jobs })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.jobs[0]?.location).toBeUndefined()
+      expect(result.data.jobs[0]?.snippet).toBeUndefined()
+      expect(result.data.jobs[0]?.type).toBeUndefined()
+      expect(result.data.jobs[0]?.company).toBeUndefined()
+      expect(result.data.jobs[0]?.updated).toBeUndefined()
+      expect(result.data.jobs[1]?.location).toBe('Rabat')
+    }
   })
 
   it('accepts a complete response whose jobs carry numeric ids (Jooble\'s documented example-response shape) without failing the whole response', () => {

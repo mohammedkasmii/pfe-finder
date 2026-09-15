@@ -110,6 +110,45 @@ describe('createJoobleAdapter', () => {
     expect(typeof result.candidates[0]?.externalId).toBe('string')
   })
 
+  it('accepts a complete response with null optional fields (the observed production failure) and still normalizes a candidate', async () => {
+    // Real Jooble records return explicit JSON null for optional fields the
+    // documentation presents as strings — this raw response reproduces
+    // exactly that shape end-to-end through fetchAllowlistedJson, schema
+    // parsing, and normalization (docs/HANDOFF.md M6A production incident).
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            totalCount: 1,
+            jobs: [
+              {
+                id: '555',
+                title: 'Stage informatique — développeur',
+                link: 'https://ma.jooble.org/desc/555',
+                location: null,
+                snippet: null,
+                type: null,
+                company: null,
+                updated: null,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+    const adapter = createJoobleAdapter({ source: jooble, fetchImpl: fetchImpl as unknown as typeof fetch, apiKey: SAMPLE_KEY })
+    const result = await adapter.collect()
+
+    expect(result.scanComplete).toBe(true)
+    expect(result.candidates).toHaveLength(1)
+    const candidate = result.candidates[0]!
+    expect(candidate.externalId).toBe('555')
+    expect(candidate.city).toBeNull()
+    expect(candidate.descriptionText).toBe('')
+    expect(candidate.publishedAt).toBeNull()
+    expect(candidate.company).toBe(jooble.name)
+  })
+
   it('marks the scan incomplete when totalCount exceeds the number of jobs returned, but still keeps the returned candidates', async () => {
     const fetchImpl = vi.fn(async () => searchResponse([{ id: '1', title: 'Stage informatique' }], 500))
     const adapter = createJoobleAdapter({ source: jooble, fetchImpl: fetchImpl as unknown as typeof fetch, apiKey: SAMPLE_KEY })
@@ -253,6 +292,55 @@ describe('createJoobleAdapter', () => {
       const result = await adapter.collect()
 
       expect(result.errorSummary).not.toContain(SAMPLE_KEY)
+    })
+  })
+
+  describe('schema-failure diagnostics are safe and bounded (docs/HANDOFF.md M6A production incident)', () => {
+    it('includes the safe field-path/issue-code diagnostic for a schema mismatch, to actually help debug production failures', async () => {
+      // "jobs[0].title" is missing entirely — a real, reproducible shape
+      // mismatch, not the null-optional-field case this correction fixes.
+      const fetchImpl = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ totalCount: 1, jobs: [{ id: '1', link: 'https://ma.jooble.org/desc/1' }] }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      )
+      const adapter = createJoobleAdapter({ source: jooble, fetchImpl: fetchImpl as unknown as typeof fetch, apiKey: SAMPLE_KEY })
+      const result = await adapter.collect()
+
+      expect(result.scanComplete).toBe(false)
+      expect(result.errorSummary).toContain('Jooble API request failed')
+      expect(result.errorSummary).toContain('schema validation failed')
+      // The field path (jobs.0.title) and the issue code must actually
+      // appear — this is the diagnostic value the correction adds.
+      expect(result.errorSummary).toMatch(/jobs\.0\.title/)
+      expect(result.errorSummary).toMatch(/invalid_type/)
+    })
+
+    it('never includes the API key, a job snippet/description, or any response body content in a schema-failure errorSummary', async () => {
+      const sensitiveSnippet = 'CONFIDENTIAL-SNIPPET-CONTENT-marker-98765'
+      const fetchImpl = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              totalCount: 1,
+              // `title` is a number instead of a string: a real schema
+              // mismatch, deliberately co-located with sensitive-looking
+              // content elsewhere in the same response body.
+              jobs: [{ id: '1', title: 12345, link: 'https://ma.jooble.org/desc/1', snippet: sensitiveSnippet }],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      )
+      const adapter = createJoobleAdapter({ source: jooble, fetchImpl: fetchImpl as unknown as typeof fetch, apiKey: SAMPLE_KEY })
+      const result = await adapter.collect()
+
+      expect(result.scanComplete).toBe(false)
+      expect(result.errorSummary).not.toContain(SAMPLE_KEY)
+      expect(result.errorSummary).not.toContain(sensitiveSnippet)
+      expect(result.errorSummary).not.toContain('https://ma.jooble.org/api/')
+      expect(result.errorSummary!.length).toBeLessThanOrEqual(500)
     })
   })
 })
