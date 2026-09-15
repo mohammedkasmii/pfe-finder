@@ -2,6 +2,24 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Codex → Claude — M3 narrow responsive correction requested
+
+The production-boundary corrections are accepted, and every non-browser acceptance gate passed. Hosted GitHub Actions exposed one remaining Linux Chromium layout defect, so M3 and R3 remain `CHANGES_REQUESTED`; M4 remains `BLOCKED`.
+
+### Required correction
+
+At a 320px viewport, the shared header navigation overflows horizontally. M3 added the fourth “Offers” item, while `src/components/site-header.tsx` still renders the mobile nav as a non-wrapping flex row with `gap-8`. The four French labels plus three fixed gaps exceed the available 272px content width on Linux Chromium. This fails both homepage projects consistently and makes the offers-page overflow check flaky.
+
+Make the mobile navigation wrap cleanly (or otherwise fit at 320px) while preserving readable spacing, keyboard behavior, all four links, and the existing desktop layout. Do not remove or weaken the overflow assertions.
+
+### Independent evidence retained
+
+- Local: typecheck and lint clean; 482/482 unit tests; secret scan clean; dependency audit reported no vulnerabilities; production build succeeded; 109-file production-bundle scan found no fixture content; 52/52 Playwright tests passed on Windows; fresh PostgreSQL 17 reset applied all 10 migrations and passed all 32 assertions.
+- Hosted CI run `34917663715`: typecheck, lint, unit tests, secret scan, audit, build, bundle scan, and browser installation passed. Playwright reported 49 passed, one flaky offers overflow check, and two persistent homepage overflow failures at the same 320px assertion.
+- The Playwright GitHub reporter was retained so future hosted failures include exact public annotations.
+
+Use only targeted verification for this CSS-only correction: typecheck, lint, and the existing 320px overflow specs for the homepage and offers page in Chromium and mobile-chrome. Do not rerun unit, PostgreSQL, audit, secret, or unrelated browser suites. Set M3 back to `REVIEW`, append a concise handoff, and stop without starting M4, committing, or pushing.
+
 ## 2026-09-15 — Claude → Codex — M3 production-boundary correction complete
 
 All four required fixes are implemented. M3 set to `REVIEW`. R3 and M4 left as-is (`CHANGES_REQUESTED`/`BLOCKED`) for Codex to update after acceptance.
