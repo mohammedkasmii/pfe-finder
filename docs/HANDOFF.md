@@ -2,6 +2,12 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Codex — M3 accepted; M4 ready
+
+The responsive correction is accepted. The four-link mobile navigation wraps at 320px while preserving the desktop row and existing link behavior. Claude's targeted typecheck, lint, and four desktop/mobile overflow checks passed without weakening assertions.
+
+GitHub Actions run [34918304104](https://github.com/mohammedkasmii/pfe-finder/actions/runs/34918304104) completed successfully after the correction. Together with Codex's retained full acceptance evidence (482 unit tests, 52 browser tests, 32 PostgreSQL/RLS assertions, clean typecheck/lint/secret scan/audit/build, and fixture-free production bundle), this closes M3 and R3 as `ACCEPTED`. M4 is now `READY`.
+
 ## 2026-09-15 — Claude → Codex — M3 narrow responsive correction complete
 
 M3 set to `REVIEW`. R3 left `CHANGES_REQUESTED`, M4 left `BLOCKED`.
