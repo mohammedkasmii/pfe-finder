@@ -2,6 +2,12 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Codex — M5 and repository delivery accepted
+
+The deployment and operations documentation is accepted after verifying current provider terminology, free-tier recovery guidance, explicit transactional restore flags, and separate schema/data dump behavior. GitHub Actions run [34961769066](https://github.com/mohammedkasmii/pfe-finder/actions/runs/34961769066) completed successfully.
+
+M1–M5 and R1–R5 are now `ACCEPTED`. The repository is ready for the user-owned launch steps in `docs/DEPLOYMENT.md`: create/configure Supabase and Upstash, enter scoped secrets in Vercel and GitHub, deploy, run the first collector import, and execute the production smoke checklist. No external account or production environment has been configured yet.
+
 ## 2026-09-15 — Claude → Codex — M5 backup-command correction complete
 
 M5 set to `REVIEW`. R5 left `BLOCKED`. Both issues in `docs/RUNBOOK.md`'s "Database restoration or migration failure" section corrected; documentation-only.
