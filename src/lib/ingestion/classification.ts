@@ -26,6 +26,39 @@ export interface ClassificationResult {
 const INTERNSHIP_KEYWORDS = /\bstage\b|\bstagiaire\b|\binternship\b|\bintern\b/i
 const EXCLUDED_CONTRACT_KEYWORDS =
   /\bcdi\b|\bcdd\b|\bfreelance\b|\bind[ée]pendant\b|\balternance\b|\bapprentissage\b|contrat de professionnalisation|\bwork[- ]study\b|\bfull[- ]time employee\b|\bpermanent position\b/i
+
+// Known SmartRecruiters experienceLevel.id values that authoritatively mean
+// "not an internship" (production review: confirmed false positive
+// SmartRecruiters ID 744000093240108 has experienceLevel.id="associate").
+// Illustrative, not exhaustive — an id NOT in this set is treated as
+// NEUTRAL (see experienceLevelSignal below), never automatically negative,
+// since "not_applicable"/"entry_level"/missing/unknown values are common on
+// genuine internship postings too (confirmed valid PFE listings
+// 744000103015093/744000101894557 both have experienceLevel.id="not_applicable").
+const NEGATIVE_EXPERIENCE_LEVEL_IDS = new Set(['associate', 'mid_senior_level', 'director', 'executive'])
+
+type ExperienceLevelSignal = 'positive' | 'negative' | 'neutral'
+
+/**
+ * Classifies the source's own `experienceLevel.id`, when supplied, into
+ * three buckets:
+ *   - "positive": explicitly "internship" — authoritative, overrides
+ *     everything else (a role can be accepted even with no internship
+ *     keyword anywhere in its title).
+ *   - "negative": a known senior/permanent-track id — authoritative
+ *     rejection, regardless of title/description content.
+ *   - "neutral": absent, "not_applicable", "entry_level", or any other
+ *     unrecognized value — no signal either way; the TITLE's own
+ *     internship keyword decides (see classifyPosting).
+ */
+function experienceLevelSignal(experienceLevelId: string | undefined): ExperienceLevelSignal {
+  if (!experienceLevelId) return 'neutral'
+  const id = experienceLevelId.toLowerCase()
+  if (id === 'internship') return 'positive'
+  if (NEGATIVE_EXPERIENCE_LEVEL_IDS.has(id)) return 'negative'
+  return 'neutral'
+}
+
 const NON_CS_DOMAIN_KEYWORDS =
   /ressources humaines|\bhr\b|human resources|\bmarketing\b|\bcommercial\b|\bventes?\b|\bsales\b|comptabilit[ée]|\baccounting\b/i
 const CS_DOMAIN_SIGNAL = /informatique|computer science|ing[ée]nieur logiciel|software engineer|\binformatics\b/i
@@ -78,18 +111,29 @@ const PFE_PHRASES =
 export function classifyPosting(input: ClassificationInput): ClassificationResult | null {
   const text = `${input.title}\n${input.descriptionText}`
 
-  if (!INTERNSHIP_KEYWORDS.test(text)) return null
-  if (EXCLUDED_CONTRACT_KEYWORDS.test(text)) return null
+  // Internship-role identification: combines the source's own structured
+  // experience-level field (far more reliable than free text — "stage de
+  // fin d'études" can appear incidentally inside a PERMANENT role's
+  // required-experience qualifications) with an explicit internship
+  // keyword in the TITLE specifically (never the description/qualifications
+  // — production review: a permanent consultant role whose QUALIFICATIONS
+  // merely required prior internship experience, SmartRecruiters ID
+  // 744000093240108, must stay rejected even with neutral/missing
+  // experience-level metadata).
+  //   - "positive" (experienceLevel.id="internship"): authoritative — the
+  //     role is accepted through to CS classification regardless of title
+  //     wording (a genuine CS internship need not say "stage" in its title).
+  //   - "negative" (a known senior id): authoritative rejection.
+  //   - "neutral" (absent/"not_applicable"/"entry_level"/unknown): no
+  //     signal either way — an internship keyword in the TITLE is then
+  //     required to continue (confirmed valid PFE listings 744000103015093/
+  //     744000101894557 both have experienceLevel.id="not_applicable" with
+  //     "Stagiaire" in the title).
+  const expSignal = experienceLevelSignal(input.experienceLevelId)
+  if (expSignal === 'negative') return null
+  if (expSignal !== 'positive' && !INTERNSHIP_KEYWORDS.test(input.title)) return null
 
-  // The source's own structured experience-level field is far more
-  // reliable than free text: "stage de fin d'études" can appear
-  // incidentally inside a PERMANENT role's required-experience
-  // qualifications (confirmed production false positive: SmartRecruiters
-  // ID 744000093240108, experienceLevel.id="associate",
-  // typeOfEmployment.id="permanent"). typeOfEmployment is deliberately
-  // NOT checked here: a confirmed valid PFE listing (ID 744000116903752)
-  // has typeOfEmployment.id="permanent" with experienceLevel.id="internship".
-  if (input.experienceLevelId && input.experienceLevelId.toLowerCase() !== 'internship') return null
+  if (EXCLUDED_CONTRACT_KEYWORDS.test(text)) return null
 
   // Title-only hard exclusion — see isHardExcludedTitle's doc comment.
   // Checked before any specialty/technology/CS-signal detection, and

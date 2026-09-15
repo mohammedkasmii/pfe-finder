@@ -154,4 +154,24 @@ export const POSTING_FIXTURES: PostingFixture[] = [
     experienceLevelId: 'internship',
     expectAccepted: false,
   },
+  {
+    description:
+      'Confirmed valid PFE listing wrongly deactivated (SmartRecruiters ID 744000103015093, "Stagiaire PFE en SAP HYBRIS"): experienceLevel="not_applicable" (neutral) with a "Stagiaire" title keyword must still be accepted',
+    title: 'Stagiaire PFE en SAP HYBRIS',
+    descriptionHtml:
+      '<p>Stage de fin d’études au sein de l’équipe informatique, paramétrage et développement sur la plateforme e-commerce SAP HYBRIS.</p>',
+    experienceLevelId: 'not_applicable',
+    expectAccepted: true,
+    expectIsPfe: true,
+  },
+  {
+    description:
+      'Confirmed valid PFE listing wrongly deactivated (SmartRecruiters ID 744000101894557, "Stagiaire PFE en SAP ARIBA"): experienceLevel="not_applicable" (neutral) with a "Stagiaire" title keyword must still be accepted',
+    title: 'Stagiaire PFE en SAP ARIBA',
+    descriptionHtml:
+      '<p>Stage de fin d’études au sein de l’équipe informatique, paramétrage et intégration de la solution achats SAP ARIBA.</p>',
+    experienceLevelId: 'not_applicable',
+    expectAccepted: true,
+    expectIsPfe: true,
+  },
 ]

@@ -56,10 +56,10 @@ describe('classifyPosting — rejects non-internship contract types even with CS
   })
 })
 
-describe('classifyPosting — experienceLevelId gate (post-deployment correction)', () => {
+describe('classifyPosting — experienceLevelId + title internship signal (production follow-up correction)', () => {
   const csDescription = 'Stage de développement web avec React et Node.js.'
 
-  it('accepts when experienceLevelId is "internship"', () => {
+  it('accepts when experienceLevelId is "internship", with a title internship keyword', () => {
     const result = classifyPosting({
       title: 'Stage Développeur',
       descriptionText: csDescription,
@@ -68,19 +68,36 @@ describe('classifyPosting — experienceLevelId gate (post-deployment correction
     expect(result).not.toBeNull()
   })
 
-  it('accepts when experienceLevelId is absent (no signal either way)', () => {
+  it('accepts a CS role with NO internship keyword in the title when experienceLevelId is "internship" (positive is authoritative)', () => {
+    const result = classifyPosting({
+      title: 'Développeur Full Stack',
+      descriptionText: 'Rejoignez notre équipe pour développer des applications web en React et Node.js.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it('accepts when experienceLevelId is absent and the title has an internship keyword (neutral + title signal)', () => {
     const result = classifyPosting({ title: 'Stage Développeur', descriptionText: csDescription })
     expect(result).not.toBeNull()
   })
 
-  it('rejects any explicit non-internship experienceLevelId, even with a strong CS signal', () => {
+  it.each(['not_applicable', 'entry_level', 'NOT_APPLICABLE'])(
+    'accepts when experienceLevelId is neutral ("%s") and the title has an internship keyword',
+    (experienceLevelId) => {
+      const result = classifyPosting({ title: 'Stage Développeur', descriptionText: csDescription, experienceLevelId })
+      expect(result).not.toBeNull()
+    },
+  )
+
+  it('rejects any explicit known-senior experienceLevelId, even with a strong CS signal and a title internship keyword', () => {
     for (const experienceLevelId of ['associate', 'mid_senior_level', 'director', 'executive']) {
       const result = classifyPosting({ title: 'Stage Développeur', descriptionText: csDescription, experienceLevelId })
       expect(result).toBeNull()
     }
   })
 
-  it('is case-insensitive', () => {
+  it('is case-insensitive for the negative set', () => {
     const result = classifyPosting({
       title: 'Stage Développeur',
       descriptionText: csDescription,
@@ -88,6 +105,19 @@ describe('classifyPosting — experienceLevelId gate (post-deployment correction
     })
     expect(result).toBeNull()
   })
+
+  it.each([undefined, 'associate', 'not_applicable', 'entry_level'])(
+    'rejects a generic permanent-role title whose qualifications merely mention a prior PFE/internship, regardless of experienceLevelId=%s (title has no internship keyword)',
+    (experienceLevelId) => {
+      const result = classifyPosting({
+        title: 'Consultant Senior — Transformation Digitale',
+        descriptionText:
+          'Poste de consultant senior. Qualifications : vous avez réalisé un stage de fin d’études ou une première expérience en conseil.',
+        experienceLevelId,
+      })
+      expect(result).toBeNull()
+    },
+  )
 })
 
 describe('classifyPosting — title-only hard domain exclusion (Codex review correction)', () => {
