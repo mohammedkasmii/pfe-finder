@@ -83,6 +83,33 @@ describe('normalizeSmartRecruitersPosting', () => {
     expect(candidate?.language).toBe('fr')
   })
 
+  it('returns null when experienceLevel.id is an explicit non-internship value (post-deployment correction: permanent role mentioning "stage de fin d\'études" only as a qualification)', () => {
+    const candidate = normalizeSmartRecruitersPosting(
+      detail({
+        name: 'Consultant confirmé - Stratégie et Transformation - Data & IA F/H',
+        jobAd: {
+          sections: {
+            qualifications: {
+              text: '<p>Vous avez réalisé un stage de fin d’études ou une première expérience en conseil data/IA.</p>',
+            },
+          },
+        },
+        experienceLevel: { id: 'associate' },
+        typeOfEmployment: { id: 'permanent' },
+      }),
+      inetum,
+    )
+    expect(candidate).toBeNull()
+  })
+
+  it('accepts when experienceLevel.id is "internship" even though typeOfEmployment.id is "permanent" (confirmed valid PFE listing shape)', () => {
+    const candidate = normalizeSmartRecruitersPosting(
+      detail({ experienceLevel: { id: 'internship' }, typeOfEmployment: { id: 'permanent' } }),
+      inetum,
+    )
+    expect(candidate).not.toBeNull()
+  })
+
   it('detects English descriptions as language "en"', () => {
     const candidate = normalizeSmartRecruitersPosting(
       detail({

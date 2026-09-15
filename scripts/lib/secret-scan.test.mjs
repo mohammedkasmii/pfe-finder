@@ -43,6 +43,42 @@ describe('scanContent', () => {
     )
     expect(findings).toEqual([])
   })
+
+  describe('env(...) indirection references (Supabase config.toml false-positive correction)', () => {
+    it('does not flag "openai_api_key = "env(OPENAI_API_KEY)""', () => {
+      const findings = scanContent('openai_api_key = "env(OPENAI_API_KEY)"', 'supabase/config.toml')
+      expect(findings).toEqual([])
+    })
+
+    it('does not flag "secret = "env(SOME_SECRET)""', () => {
+      const findings = scanContent('secret = "env(SOME_SECRET)"', 'supabase/config.toml')
+      expect(findings).toEqual([])
+    })
+
+    it('still flags an actual long assigned secret', () => {
+      const findings = scanContent('api_key = "sk-live-abcdefghijklmnopqrstuvwxyz123456"', 'config.toml')
+      expect(findings.length).toBeGreaterThan(0)
+    })
+
+    it('does not broadly exempt malformed env(...) text', () => {
+      // Not the exact `env(UPPERCASE_NAME)` shape: lowercase name, trailing
+      // content after the closing paren, and a value that merely starts
+      // with "env(" but is not that shape at all must all still be
+      // treated as a real assigned secret.
+      expect(scanContent('api_key = "env(lowercase_name)"', 'x.toml').length).toBeGreaterThan(0)
+      expect(scanContent('api_key = "env(OPENAI_API_KEY)EXTRA"', 'x.toml').length).toBeGreaterThan(0)
+      expect(scanContent('api_key = "env(OPENAI_API_KEY"', 'x.toml').length).toBeGreaterThan(0)
+      expect(scanContent('api_key = "envOPENAI_API_KEY12345678"', 'x.toml').length).toBeGreaterThan(0)
+    })
+
+    it('flags a real secret even when an env(...) reference appears elsewhere in the same file', () => {
+      const findings = scanContent(
+        'openai_api_key = "env(OPENAI_API_KEY)"\nservice_role_key = "abcdefghijklmnopqrstuvwxyz"',
+        'supabase/config.toml',
+      )
+      expect(findings.length).toBeGreaterThan(0)
+    })
+  })
 })
 
 describe('isForbiddenFile', () => {

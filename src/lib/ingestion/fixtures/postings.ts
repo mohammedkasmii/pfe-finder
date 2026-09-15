@@ -4,6 +4,10 @@ export interface PostingFixture {
   descriptionHtml: string
   expectAccepted: boolean
   expectIsPfe?: boolean
+  /** SmartRecruiters' own `experienceLevel.id`, when the fixture needs to
+   * exercise that gate (see classification.ts). Omitted fixtures behave as
+   * if the source never supplied the field. */
+  experienceLevelId?: string
 }
 
 /**
@@ -113,5 +117,41 @@ export const POSTING_FIXTURES: PostingFixture[] = [
     descriptionHtml: '<p>Stage DevOps, Docker, Kubernetes, CI/CD, basé à Paris.</p>',
     expectAccepted: true,
     expectIsPfe: false,
+  },
+  {
+    description:
+      'Confirmed valid PFE listing (SmartRecruiters ID 744000116903752): experienceLevel="internship" with typeOfEmployment="permanent" must still be accepted',
+    title: 'Stage PFE Développeur Full Stack',
+    descriptionHtml: '<p>Stage de fin d’études en développement web avec React et Node.js.</p>',
+    experienceLevelId: 'internship',
+    expectAccepted: true,
+    expectIsPfe: true,
+  },
+  {
+    description:
+      'Production false positive (SmartRecruiters ID 744000093240108): permanent consultant role mentioning "stage de fin d\'études" only as a prior-experience qualification, experienceLevel="associate"',
+    title: 'Consultant confirmé - Stratégie et Transformation - Data & IA F/H',
+    descriptionHtml:
+      '<p>Nous recherchons un consultant confirmé pour renforcer notre practice Data & IA.</p><p>Qualifications : vous avez réalisé un stage de fin d’études ou une première expérience réussie en conseil, idéalement sur des sujets data/IA.</p>',
+    experienceLevelId: 'associate',
+    expectAccepted: false,
+  },
+  {
+    description:
+      'Production false positive (SmartRecruiters ID 744000130014789): customer-engagement/marketing internship for a business-school profile, incidental GCP mention must not make it a CS internship',
+    title: 'Stage Chargé(e) de l’Engagement & activation Client - H/F',
+    descriptionHtml:
+      '<p>Stage au sein de l’équipe marketing client, en charge de l’activation client et de l’engagement sur nos campagnes.</p><p>Profil recherché : étudiant(e) en école de commerce, à l’aise avec les outils digitaux (nous utilisons notamment GCP pour le reporting).</p>',
+    experienceLevelId: 'internship',
+    expectAccepted: false,
+  },
+  {
+    description:
+      'Production false positive (SmartRecruiters ID 744000148448799): sustainability/ESG audit internship for business/finance profiles, generic "data"/"outils informatiques"/Excel/reporting must not make it a CS internship',
+    title: 'Stage de Fin d’études - Sustainability Audit & Consulting',
+    descriptionHtml:
+      '<p>Stage de fin d’études au sein de notre équipe RSE, dédiée à l’audit de durabilité (ESG) pour nos clients grands comptes.</p><p>Vous exploiterez des données (data) issues de nos outils informatiques internes et produirez des reportings Excel pour nos clients.</p>',
+    experienceLevelId: 'internship',
+    expectAccepted: false,
   },
 ]

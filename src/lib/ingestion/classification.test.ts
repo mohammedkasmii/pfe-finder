@@ -7,7 +7,11 @@ describe('classifyPosting — documented fixtures', () => {
   for (const fixture of POSTING_FIXTURES) {
     it(fixture.description, () => {
       const descriptionText = sanitizeDescriptionToPlainText(fixture.descriptionHtml)
-      const result = classifyPosting({ title: fixture.title, descriptionText })
+      const result = classifyPosting({
+        title: fixture.title,
+        descriptionText,
+        experienceLevelId: fixture.experienceLevelId,
+      })
 
       if (!fixture.expectAccepted) {
         expect(result).toBeNull()
@@ -49,6 +53,97 @@ describe('classifyPosting — rejects non-internship contract types even with CS
     expect(
       classifyPosting({ title: 'Développeur Web (CDD)', descriptionText: 'Poste en CDD, développement React.' }),
     ).toBeNull()
+  })
+})
+
+describe('classifyPosting — experienceLevelId gate (post-deployment correction)', () => {
+  const csDescription = 'Stage de développement web avec React et Node.js.'
+
+  it('accepts when experienceLevelId is "internship"', () => {
+    const result = classifyPosting({
+      title: 'Stage Développeur',
+      descriptionText: csDescription,
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it('accepts when experienceLevelId is absent (no signal either way)', () => {
+    const result = classifyPosting({ title: 'Stage Développeur', descriptionText: csDescription })
+    expect(result).not.toBeNull()
+  })
+
+  it('rejects any explicit non-internship experienceLevelId, even with a strong CS signal', () => {
+    for (const experienceLevelId of ['associate', 'mid_senior_level', 'director', 'executive']) {
+      const result = classifyPosting({ title: 'Stage Développeur', descriptionText: csDescription, experienceLevelId })
+      expect(result).toBeNull()
+    }
+  })
+
+  it('is case-insensitive', () => {
+    const result = classifyPosting({
+      title: 'Stage Développeur',
+      descriptionText: csDescription,
+      experienceLevelId: 'ASSOCIATE',
+    })
+    expect(result).toBeNull()
+  })
+})
+
+describe('classifyPosting — title-only hard domain exclusion (Codex review correction)', () => {
+  it('rejects a customer-engagement internship title even with an incidental GCP mention', () => {
+    const result = classifyPosting({
+      title: 'Stage Chargé(e) de l’Engagement & activation Client',
+      descriptionText: 'Stage marketing client, activation client, nous utilisons GCP pour le reporting.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('rejects a sustainability/ESG audit internship title even with generic "data"/"outils informatiques" mentions', () => {
+    const result = classifyPosting({
+      title: 'Stage de Fin d’études - Sustainability Audit',
+      descriptionText: 'Stage RSE, audit de durabilité ESG, exploitation de data via nos outils informatiques.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('still accepts a genuine cloud/DevOps internship that legitimately mentions GCP', () => {
+    const result = classifyPosting({
+      title: 'Stage Ingénieur Cloud',
+      descriptionText: 'Stage DevOps, infrastructure sur GCP et Kubernetes.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it('does NOT reject a genuine CS internship merely because its DESCRIPTION mentions sustainability/ESG/RSE/customer engagement/a business school (only the title is checked)', () => {
+    const result = classifyPosting({
+      title: 'Stage Développeur Full Stack',
+      descriptionText:
+        'Stage de développement web avec React et Node.js pour notre plateforme de reporting RSE/ESG destinée aux équipes engagement client, ouvert aux profils école de commerce ou informatique.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it('does NOT reject a bare sustainability/ESG title word without an audit/consulting role word', () => {
+    const result = classifyPosting({
+      title: 'Stage développeur TypeScript — plateforme RSE/ESG',
+      descriptionText: 'Stage de développement logiciel en TypeScript pour une plateforme de reporting RSE/ESG.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it('does NOT reject a title mentioning "customer engagement" as a product/platform, not the role itself', () => {
+    const result = classifyPosting({
+      title: 'Software engineering internship — customer engagement platform',
+      descriptionText: 'Backend internship building our customer engagement platform in TypeScript and PostgreSQL.',
+      experienceLevelId: 'internship',
+    })
+    expect(result).not.toBeNull()
   })
 })
 

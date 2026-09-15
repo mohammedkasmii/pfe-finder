@@ -2,6 +2,64 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Claude → Codex — post-deployment correction: hero CTA + classifier false positives (updated after CHANGES_REQUESTED)
+
+Small, focused correction against the reviewed production URL (`https://pfe-finder.vercel.app/`). Not tied to a milestone (all of M1–M5/R1–R5 are `ACCEPTED`); no `docs/TASKS.md` change made or needed. **Updated in place** after Codex's `CHANGES_REQUESTED` review of the classifier domain gate and the secret-scanner fix, rather than appending a second entry — see the two "Codex review correction" subsections below.
+
+### 1. Hero CTA fix
+
+`src/components/hero.tsx`: the primary CTA (`hero.ctaPrimary`, "Explorer les offres"/"Explore offers") linked to `#specialties`; now a `next/link` `Link` to `/offers`. Added one focused assertion to the existing `src/components/site-sections.test.tsx` (both locales): the CTA link has `href="/offers"`.
+
+### 2. SmartRecruiters classifier false positives
+
+Root cause: two independent gaps, not overlapping.
+
+- **Confirmed FP 1 (ID 744000093240108, permanent consultant)**: text-only classification saw "stage de fin d'études" inside the role's *qualifications* (required prior experience) and had no signal that the role itself is permanent/senior. Fix: `src/lib/ingestion/classification.ts` accepts an optional `experienceLevelId` and rejects outright when the source supplies one that isn't `"internship"` (case-insensitive) — independent of any text/keyword match. `typeOfEmployment` is deliberately **not** used for rejection (confirmed valid PFE listing ID 744000116903752 has `typeOfEmployment.id="permanent"` with `experienceLevel.id="internship"`). **Unchanged by the Codex review** — kept exactly as first implemented.
+- **Confirmed FP 2 (ID 744000130014789, customer-engagement/marketing internship) and FP 3 (ID 744000148448799, sustainability/ESG audit internship)**: both are genuine internships (so the experience-level gate doesn't apply), but an incidental technology/specialty mention ("GCP" → `technologies`/`cloud-devops` specialty; "outils informatiques" → `CS_DOMAIN_SIGNAL`'s bare `informatique` substring match) bypassed the existing soft domain-exclusion gate, which only fires when specialties/technologies are *both* empty.
+
+#### Codex review correction: narrowed to a title-only, role-level exclusion
+
+The first fix used a full-text `HARD_EXCLUDE_DOMAIN_KEYWORDS` gate matching bare domain words (`ESG`, `RSE`, `durabilité`, `sustainability`, `engagement client`) anywhere in title **or description**, unconditionally. Codex correctly flagged this as able to hide a genuine CS internship whose *description* merely mentions building software for one of these domains.
+
+Replaced with `isHardExcludedTitle()`, checked **only against the title**, never the description:
+
+- `HARD_EXCLUDE_CUSTOMER_ENGAGEMENT_TITLE` — `activation client` / `chargé(e) de l'engagement` (the exact confirmed FP2 title phrase — not the broader, easily-incidental "customer engagement"/"engagement client").
+- `HARD_EXCLUDE_BUSINESS_FUNCTION_TITLE` — marketing, sales, HR, accounting, or commercial internship titles (unchanged category, now title-scoped).
+- Sustainability/ESG/RSE: rejects only when the title has **both** a domain word (`durabilité`/`sustainability`/`ESG`/`RSE`) **and** an audit/consulting role word (`audit`/`consultant`/`consulting`/`conseil`) — a bare domain word in the title is no longer enough.
+
+No specialty/technology/CS-signal override for any of these — but because the gate is now title-only, a description mentioning sustainability, ESG, RSE, customer engagement, a business school, or another non-CS domain never triggers it on its own.
+
+New positive regressions added (`classification.test.ts`, exact titles as requested): `"Stage développeur TypeScript — plateforme RSE/ESG"` (bare domain word, no audit/consulting word → accepted) and `"Software engineering internship — customer engagement platform"` (domain phrase describing the product, not the role → accepted), plus a case where a genuine CS internship's *description* mentions sustainability/ESG/RSE/customer engagement/business school and must still be accepted. The three confirmed production false-positive fixtures (`postings.ts`) are unchanged and still rejected — their titles independently satisfy the narrower title-only patterns (FP2: `activation client`; FP3: `Sustainability` + `Audit`+`Consulting` all in the title). No source-ID blacklist was added.
+
+**Plumbing** (unchanged by the Codex review): `src/lib/sources/smartrecruiters/schema.ts` adds a bounded, optional `ProviderMetadataFieldSchema` (`{ id?: string }`, ≤100 chars) for `experienceLevel` and `typeOfEmployment` (both commonly absent — schema stays permissive). `src/lib/sources/smartrecruiters/normalize.ts` passes `detail.experienceLevel?.id` through to `classifyPosting` as trusted, normalized provider metadata — never inferred from free text.
+
+**Regression coverage**: `src/lib/ingestion/fixtures/postings.ts` has four fixtures — the valid Inetum PFE case (744000116903752-shaped: `experienceLevelId: 'internship'`, `typeOfEmployment` permanent) and all three false-positive patterns (each `expectAccepted: false`), run through the existing fixture-driven loop in `classification.test.ts`. `classification.test.ts` has two `describe` blocks: the `experienceLevelId` gate (accepts `"internship"`/absent, rejects `associate`/`mid_senior_level`/`director`/`executive`, case-insensitive) and the title-only hard exclusion (rejects the two confirmed-FP title patterns; still accepts a genuine cloud/DevOps internship legitimately mentioning GCP; accepts the two new Codex-requested positive cases; accepts a description-only mention of these domains). `normalize.test.ts` and `schema.test.ts` are unchanged from the first pass (experience-level end-to-end + schema bounds).
+
+**Unchanged, confirmed preserved**: complete-scan deactivation (`src/lib/collector/run.ts`/`finalize_completed_run` — untouched; the next successful collector run will deactivate these three now-rejected rows automatically); SSRF/URL allowlisting, HTML sanitization, RLS, rate limiting, and secret handling (no files in those areas touched).
+
+### 3. Secret scanner env-reference false positive
+
+#### Codex review correction
+
+`scripts/lib/secret-scan.mjs`'s generic-assigned-secret pattern flagged Supabase's own config indirection syntax (`openai_api_key = "env(OPENAI_API_KEY)"`) as a real secret. Fixed at the pattern level, not by exempting the file: the pattern now captures the quoted value, and `hasNonExemptMatch()` only reports a finding when at least one matched value is **not** an exact `env(UPPERCASE_NAME)` reference (anchored regex `^env\([A-Z_][A-Z0-9_]*\)$` — no partial/trailing-content match qualifies). `supabase/config.toml` itself is not allowlisted, and every other pattern (AWS key, PEM block, JWT) is untouched.
+
+Added to `scripts/lib/secret-scan.test.mjs`: exact uppercase `env(...)` references are allowed; a real long assigned credential remains flagged; four malformed `env(...)`-shaped variants (lowercase name, trailing content, unterminated, no parentheses) remain flagged; and a real credential is still caught when an exempt environment reference appears elsewhere in the same file. The handoff intentionally avoids repeating the synthetic credential-shaped test literal because tracked documentation is scanned too.
+
+One correctness note fixed while implementing this: the pattern now carries the `g` flag (needed to inspect every match's captured value), and since `SECRET_PATTERNS` is a module-level constant reused across every file the CLI scans, `hasNonExemptMatch()` explicitly resets `pattern.lastIndex` before scanning — an early return on a non-exempt match in one file could otherwise leave `lastIndex` non-zero and cause the next file's scan to start mid-string.
+
+### Files changed
+
+`src/components/hero.tsx`, `src/components/site-sections.test.tsx`, `src/lib/ingestion/classification.ts`, `src/lib/ingestion/classification.test.ts`, `src/lib/ingestion/fixtures/postings.ts`, `src/lib/sources/smartrecruiters/schema.ts`, `src/lib/sources/smartrecruiters/schema.test.ts`, `src/lib/sources/smartrecruiters/normalize.ts`, `src/lib/sources/smartrecruiters/normalize.test.ts`, `scripts/lib/secret-scan.mjs`, `scripts/lib/secret-scan.test.mjs`.
+
+### Verification (scoped per instruction)
+
+- `pnpm exec vitest run src/lib/ingestion/classification.test.ts src/lib/sources/smartrecruiters/schema.test.ts src/lib/sources/smartrecruiters/normalize.test.ts src/components/site-sections.test.tsx scripts/lib/secret-scan.test.mjs` — 91/91 passed.
+- `pnpm typecheck` — clean.
+- `pnpm lint` — clean.
+- `pnpm scan:secrets` — clean, 166 files scanned, no issues found (previously failed on `supabase/config.toml`'s `env(...)` reference; now fixed at the pattern level per above).
+
+Did not run PostgreSQL, Playwright, the full unit suite, dependency audit, or a production build (no focused failure required it). Not committed, pushed, deployed, or ran the collector.
+
 ## 2026-09-15 — Codex — M5 and repository delivery accepted
 
 The deployment and operations documentation is accepted after verifying current provider terminology, free-tier recovery guidance, explicit transactional restore flags, and separate schema/data dump behavior. GitHub Actions run [34961769066](https://github.com/mohammedkasmii/pfe-finder/actions/runs/34961769066) completed successfully.

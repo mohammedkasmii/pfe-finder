@@ -44,7 +44,11 @@ export function normalizeSmartRecruitersPosting(
     .join('\n')
   const descriptionText = sanitizeDescriptionToPlainText(descriptionHtml)
 
-  const classification = classifyPosting({ title: detail.name, descriptionText })
+  const classification = classifyPosting({
+    title: detail.name,
+    descriptionText,
+    experienceLevelId: detail.experienceLevel?.id,
+  })
   if (!classification) return null
 
   const location = normalizeLocation({

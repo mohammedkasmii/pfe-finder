@@ -27,6 +27,11 @@ describe('homepage sections', () => {
       expect(headings[0]).toHaveTextContent(dictionary.hero.title)
     })
 
+    it(`the primary hero CTA links to /offers, not the specialties anchor (${locale})`, () => {
+      render(<Hero dictionary={dictionary} />)
+      expect(screen.getByRole('link', { name: dictionary.hero.ctaPrimary })).toHaveAttribute('href', '/offers')
+    })
+
     it(`renders all three how-it-works steps as a list (${locale})`, () => {
       render(<HowItWorks dictionary={dictionary} />)
       expect(screen.getAllByRole('listitem')).toHaveLength(3)

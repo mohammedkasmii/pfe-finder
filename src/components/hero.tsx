@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Dictionary } from '@/lib/i18n/types'
 import { RouteMotif } from './route-motif'
 
@@ -24,12 +25,12 @@ export function Hero({ dictionary }: HeroProps) {
             {hero.description}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <a
-              href="#specialties"
+            <Link
+              href="/offers"
               className="rounded-md bg-primary px-6 py-3.5 text-sm font-semibold text-paper shadow-card hover:bg-primary-dark hover:shadow-card-hover"
             >
               {hero.ctaPrimary}
-            </a>
+            </Link>
             <a href="#how-it-works" className="text-sm font-semibold text-primary hover:text-primary-dark">
               {hero.ctaSecondary} →
             </a>

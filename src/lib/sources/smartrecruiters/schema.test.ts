@@ -88,4 +88,27 @@ describe('SmartRecruitersDetailResponseSchema bounds', () => {
       }).success,
     ).toBe(true)
   })
+
+  it('accepts experienceLevel.id and typeOfEmployment.id when present (post-deployment classification correction)', () => {
+    const result = SmartRecruitersDetailResponseSchema.safeParse({
+      ...base,
+      experienceLevel: { id: 'internship' },
+      typeOfEmployment: { id: 'permanent' },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.experienceLevel?.id).toBe('internship')
+      expect(result.data.typeOfEmployment?.id).toBe('permanent')
+    }
+  })
+
+  it('accepts a response with experienceLevel/typeOfEmployment absent (common case)', () => {
+    expect(SmartRecruitersDetailResponseSchema.safeParse(base).success).toBe(true)
+  })
+
+  it('rejects an oversized experienceLevel.id', () => {
+    expect(
+      SmartRecruitersDetailResponseSchema.safeParse({ ...base, experienceLevel: { id: 'x'.repeat(101) } }).success,
+    ).toBe(false)
+  })
 })

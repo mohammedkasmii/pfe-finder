@@ -22,6 +22,19 @@ const MAX_URL_LENGTH = 2048
 const MAX_SECTION_TEXT_LENGTH = 50_000
 const MAX_DATE_STRING_LENGTH = 64
 const MAX_LISTING_PAGE_SIZE = 500
+const MAX_ENUM_ID_LENGTH = 100
+
+/**
+ * A small `{ id, ... }` enum-shaped field from SmartRecruiters' Posting
+ * API — `experienceLevel` and `typeOfEmployment` share this shape. Bounded
+ * and fully optional: absence is a normal, common case (docs/HANDOFF.md
+ * classification correction), not a schema violation.
+ */
+const ProviderMetadataFieldSchema = z
+  .object({
+    id: z.string().max(MAX_ENUM_ID_LENGTH).optional(),
+  })
+  .partial()
 
 const LocationSchema = z
   .object({
@@ -59,6 +72,15 @@ export const SmartRecruitersDetailResponseSchema = z.object({
   applyUrl: z.url().max(MAX_URL_LENGTH).optional(),
   releasedDate: z.string().max(MAX_DATE_STRING_LENGTH).optional(),
   location: LocationSchema.optional(),
+  // Trusted, normalized provider metadata the classifier uses as a
+  // reliable, non-inferred signal (docs/HANDOFF.md classification
+  // correction): `experienceLevel.id` distinguishes a genuine internship
+  // from a permanent/senior role whose qualifications merely mention
+  // prior internship experience in free text. `typeOfEmployment` is
+  // preserved for the same reason it appears in real responses, but is
+  // deliberately NOT used to reject a posting on its own.
+  experienceLevel: ProviderMetadataFieldSchema.optional(),
+  typeOfEmployment: ProviderMetadataFieldSchema.optional(),
   jobAd: z
     .object({
       sections: z
