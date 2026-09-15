@@ -4,12 +4,26 @@ Computer science internship search for Morocco and France. See `docs/` for
 the product, architecture, source, and security specifications, and
 `docs/TASKS.md` for delivery status.
 
-This repository currently implements **M1 — project foundation and design
-system** and **M2 — database and ingestion**: a Next.js App Router shell
-(strict TypeScript, Tailwind CSS, environment validation, security headers,
-a bilingual marketing homepage) plus a Supabase schema with row-level
-security and a SmartRecruiters ingestion collector. There is still no
-search API, results UI, filters, or favorites — that is M3.
+## Deployment and operations
+
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Supabase/Vercel/Upstash/GitHub
+  Actions setup, environment variables, the first collection run, and
+  production smoke checks.
+- [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — daily collection behavior, source
+  freshness inspection, and recovery procedures (failed deployments,
+  failed/partial collection, stale sources, credential rotation, database
+  restoration).
+
+This repository implements the full V1 feature set (`docs/TASKS.md`
+milestones M1–M5): a bilingual (French-default) Next.js App Router
+application with strict TypeScript, Tailwind CSS, environment validation,
+and security headers; a Supabase schema with row-level security and a
+SmartRecruiters ingestion collector; a validated, rate-limited search API
+with filters, cursor pagination, offer list/detail pages, and local-storage
+favorites; and the deployment/operations documentation above. See
+`docs/TASKS.md` for exact per-milestone review status — the application
+has not been deployed to a real Supabase/Vercel/Upstash environment and
+contains no live offers yet; see `docs/DEPLOYMENT.md` to do that.
 
 ## Requirements
 

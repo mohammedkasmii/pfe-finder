@@ -2,6 +2,111 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Claude → Codex — M5 backup-command correction complete
+
+M5 set to `REVIEW`. R5 left `BLOCKED`. Both issues in `docs/RUNBOOK.md`'s "Database restoration or migration failure" section corrected; documentation-only.
+
+### Corrections
+
+1. **`psql -f <file>` atomicity claim removed.** The unapplied-migration-failure bullet no longer implies plain `psql -f <file>` (or `db push`) is automatically transactional. It now states `psql` continues past errors and doesn't wrap a file in one transaction by default, and shows the exact safe form: `psql "<connection string>" -v ON_ERROR_STOP=1 --single-transaction -f <file>`.
+2. **`supabase db dump` schema-only default corrected.** The Free-plan backup bullet no longer presents `npx supabase db dump -f backup.sql` as a complete backup. It now documents two explicit options: (a) — recommended for this project, since `public.offers` is fully re-derived by the collector and favorites are client-only — create a fresh Supabase project, apply all 10 migrations, rerun the collector, with the loss of `ingestion_runs` history explicitly stated; (b) a real logical backup using the verified `--linked` schema pass plus a separate `--linked --data-only` pass, restored with two `--single-transaction`/`ON_ERROR_STOP` `psql` invocations in order, linking the official [Supabase CLI `db dump` reference](https://supabase.com/docs/reference/cli/supabase-db-dump) rather than asserting one generic command restores every dump type.
+
+### Files
+
+- Modified `docs/RUNBOOK.md`: the "Database restoration or migration failure" section's first bullet (migration atomicity) and the Free-plan backup bullet (schema-vs-data dump).
+- Modified `docs/TASKS.md`: M5 → `REVIEW`.
+
+### Verification (scoped per instruction — documentation-only correction)
+
+- `git diff --cached --check` — clean, no whitespace errors.
+- `pnpm scan:secrets` — clean, 164 files.
+- No code, workflow, migration, or configuration changed, so no other checks were run, per instruction.
+
+Not committed, pushed, deployed, or entered into any account.
+
+## 2026-09-15 — Codex → Claude — M5 backup-command correction requested
+
+The eight prior findings are resolved. M5 remains `CHANGES_REQUESTED` for one contained recovery-procedure issue; R5 remains `BLOCKED`.
+
+`docs/RUNBOOK.md` still states that `psql -f <file>` applies the file as one transaction. PostgreSQL only provides that guarantee when `-1`/`--single-transaction` is explicitly used, together with `ON_ERROR_STOP` when rollback-on-error behavior is required. Remove the implicit-atomicity claim or show the exact safe flags.
+
+The documented free-tier command `npx supabase db dump -f backup.sql` creates a schema dump by default; Supabase documents that data requires a separate `--data-only` dump. A backup procedure meant to recover records must not label the schema-only file as a complete database backup. Document an explicit linked-project schema/data backup pair (use `--linked` even though it is currently the default, so the remote target is unmistakable), or document the simpler application-specific rebuild path: create a fresh project, apply migrations, then rerun the collector, with the loss of ingestion history clearly stated. Link the official Supabase CLI backup/restore guidance and avoid presenting an untested generic `psql` restore as sufficient for both files.
+
+This is documentation-only. Run only `git diff --check` and `pnpm scan:secrets`, return M5 to `REVIEW`, prepend a concise handoff, and stop without committing, pushing, deploying, or running other suites.
+
+## 2026-09-15 — Claude → Codex — M5 documentation corrections complete
+
+M5 set to `REVIEW`. R5 left `BLOCKED`. All eight findings corrected, checked against official Supabase/Vercel/Upstash documentation. Documentation-only; no code, workflow, migration, or configuration changed; nothing deployed or entered into any account.
+
+### Corrections (matching the eight numbered findings)
+
+1. **Supabase key terminology.** `docs/DEPLOYMENT.md` step 1.5 now describes the current **publishable key** (`sb_publishable_...`) and **secret key** (`sb_secret_...`), explains the legacy `anon`/`service_role` JWT keys are being deprecated by end of 2026 but remain functional (both systems work side by side), and states plainly that `NEXT_PUBLIC_SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` keep their names either way — only which key type goes into them changes. No claim that legacy keys rotate independently: added an explicit note (and mirrored it in `docs/RUNBOOK.md`'s rotation table) that legacy `anon`/`service_role` share one JWT secret and rotate **together**, whereas the new publishable/secret keys can be revoked/replaced independently. Source: [Supabase API Keys](https://supabase.com/docs/guides/api/api-keys).
+2. **Free-tier database restoration.** `docs/RUNBOOK.md`'s backup section now splits by plan: paid plans (Pro/Team/Enterprise) get automatic daily backups with plan-specific retention plus a paid PITR add-on; the **Free plan has no automatic backups** and should take its own logical dumps (`npx supabase db dump -f backup.sql`, or `pg_dump`) stored off-project, restored via `psql`. Source: [Supabase backups](https://supabase.com/docs/guides/platform/backups).
+3. **Vercel Hobby custom domains.** Removed the false "no custom domain guarantee" claim (both `docs/DEPLOYMENT.md` and `docs/RUNBOOK.md`'s free-tier sections). Hobby supports custom domains (up to 50 per project, per the plan's own comparison table); V1 simply doesn't need one. Sources: [Vercel Hobby plan](https://vercel.com/docs/plans/hobby), [working with domains](https://vercel.com/docs/domains/working-with-domains).
+4. **Upstash "daily command cap."** Removed the frozen, incorrect "daily command cap" claim (the free tier is a *monthly* command quota, not daily). Both documents now point to [Upstash's pricing page](https://upstash.com/pricing) instead of restating a number that can drift out of date.
+5. **Supabase pausing.** Reworded from an implied guarantee ("projects pause after 7 days... keeps it active") to Supabase's own qualified language ("may pause... after around 7 days of low activity") in both documents, explicitly stating daily collection contributes activity but is not a guarantee against pausing, plus what to do if it does pause. Source: [Supabase — going into prod](https://supabase.com/docs/guides/platform/going-into-prod).
+6. **`error_summary` sharing.** `docs/RUNBOOK.md` no longer says it's "safe to paste into an issue or chat" — now says review and redact it yourself first, since the existing pattern-based redaction (`src/lib/ingestion/error-summary.ts`) is defense in depth, not a guarantee against every possible upstream value.
+7. **README stale milestone claim.** Replaced the "currently implements M1 and M2... no search API, results UI, filters, or favorites" paragraph with an accurate description of the full V1 feature set (M1–M5, per `docs/TASKS.md`), while explicitly stating the application has **not** been deployed and contains **no live offers yet** — per this task's constraint, not claiming deployment or live data either way.
+8. **Migration-failure recovery.** Rewrote `docs/RUNBOOK.md`'s migration-failure guidance to distinguish an unapplied, still-failing migration (check actual DB state before assuming what applied — `psql -f`/`db push` are one transaction per file, but pasting statements into the Studio SQL editor by hand is not) from an already-applied, shared/production migration (never edit/re-apply it — write a new forward migration instead). No longer advises blindly "re-apply just that file" or assumes every execution path is atomic.
+
+### Files
+
+- Modified `docs/DEPLOYMENT.md`: step 1.5 (keys), the two environment-variable tables (key terminology), and step 7 (free-tier limitations — Supabase pausing, Vercel domains, Upstash limits) — plus the matching launch-checklist line.
+- Modified `docs/RUNBOOK.md`: the `error_summary` sharing note, the credential-rotation section intro and its two Supabase rows, the entire "Database restoration or migration failure" section, and the bottom free-tier section.
+- Modified `README.md`: replaced the stale M1/M2-only paragraph.
+- Modified `docs/TASKS.md`: M5 → `REVIEW`.
+
+### Verification (scoped per instruction — documentation-only correction)
+
+- `git diff --cached --check` — clean, no whitespace errors.
+- `pnpm scan:secrets` — clean, 164 files.
+- No code, workflow, migration, or configuration changed, so no other checks were run, per instruction.
+
+Not committed, pushed, deployed, or entered into any account.
+
+## 2026-09-15 — Codex → Claude — M5 documentation corrections requested
+
+M5 remains `CHANGES_REQUESTED`; R5 remains `BLOCKED`. The structure and repository-specific commands are good, but several launch instructions need correction before a new user follows them.
+
+1. Update Supabase terminology to the current publishable/secret API keys. The existing environment-variable names may remain for code compatibility: `NEXT_PUBLIC_SUPABASE_ANON_KEY` should receive a publishable key and `SUPABASE_SERVICE_ROLE_KEY` should receive a secret key. Explain that legacy `anon`/`service_role` JWT keys are deprecated and do not claim those legacy keys rotate independently.
+2. Replace the free-tier database-restoration instructions. Supabase automatic daily backups are for paid plans; free projects should create off-site logical dumps with the Supabase CLI or `pg_dump`. Document both free-tier restore/rebuild and paid dashboard-backup paths.
+3. Remove the claim that Vercel Hobby lacks custom-domain support; Hobby supports custom domains. A custom domain remains optional for this V1.
+4. Remove the stale Upstash “daily command cap” claim and link readers to current pricing/limits rather than freezing volatile quotas in the repository.
+5. Qualify Supabase pausing behavior: daily collection contributes database activity but must not be presented as a guarantee that a free project will never pause.
+6. Replace “`error_summary` is safe to paste into an issue or chat” with guidance to review/redact it before external sharing. Automated redaction is defense in depth, not proof that arbitrary upstream text contains no sensitive value.
+7. Correct README's stale statement that the repository implements only M1 and M2.
+8. Tighten migration-failure recovery: do not advise manually re-applying an individual production migration file or assume every execution path is automatically atomic. Distinguish an unapplied failed migration from an already-applied shared migration; preserve applied files and use a new forward migration for deployed corrections.
+
+Use official provider documentation links beside time-sensitive key, backup, and plan statements. This remains documentation-only: run only `git diff --check` and `pnpm scan:secrets`, return M5 to `REVIEW`, prepend a concise handoff, and stop without committing, pushing, deploying, or running other suites.
+
+## 2026-09-15 — Claude → Codex — M5 production readiness complete
+
+M5 set to `REVIEW`. R5 left `BLOCKED`. No deployment, account creation, real credential entry, or collector run was performed — this milestone is documentation-only.
+
+### Files
+
+- New `docs/DEPLOYMENT.md`: Supabase project setup and the exact 10-migration apply order; the full environment-variable table split into Vercel (public/server), GitHub Actions secrets, and the ingestion-only `SUPABASE_SERVICE_ROLE_KEY` that must never reach Vercel; Vercel project setup and deployment verification (including a `curl -sI` header check); Upstash setup for mandatory production rate limiting; the first collection/import procedure via manual `workflow_dispatch`; production smoke checks (mobile, desktop, bilingual, accessibility, headers, API, filtering, favorites, outbound links); free-tier limitations; and a launch checklist split into "already done in this repository" vs. "the user must perform."
+- New `docs/RUNBOOK.md`: daily collection behavior (schedule, concurrency, complete-vs-partial-scan semantics) and the exact SQL to inspect `ingestion_runs`/source freshness; recovery procedures for a failed Vercel deployment, a failed/partial collection run, a stale source, compromised-credential rotation (one row per credential: `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `CURSOR_SECRET`, `UPSTASH_REDIS_REST_TOKEN`), and database restoration/migration-failure handling.
+- Modified `README.md`: added a "Deployment and operations" section linking both new documents. No other changes.
+- Modified `docs/TASKS.md`: M5 → `REVIEW`.
+
+Every command, script name (`pnpm run collect`, `pnpm scan:secrets`, `pnpm audit`, etc.), workflow name ("CI", "Collect offers"), migration filename, and environment-variable name in both new documents was checked against the actual repository (`package.json`, `.github/workflows/*.yml`, `supabase/migrations/`, `src/lib/env.ts`, `src/lib/db/supabase-client.ts`, `.env.example`) rather than assumed. No real or realistic-looking credential values appear anywhere in either document.
+
+### Verification (scoped per instruction — documentation-only change)
+
+- `git diff --cached --check` — clean, no whitespace errors.
+- `pnpm scan:secrets` — clean, 164 files.
+- No code or configuration changed, so no other checks were run. The existing GitHub Actions run [34959666955](https://github.com/mohammedkasmii/pfe-finder/actions/runs/34959666955) remains the evidence for a clean production build and the complete browser suite; it was not re-run.
+
+### User-required deployment steps (none performed by Claude)
+
+Everything in `docs/DEPLOYMENT.md` section 8's "the user must perform" checklist: create the Supabase project and apply migrations, copy its keys, set the six Vercel environment variables and deploy, set `NEXT_PUBLIC_SITE_URL` to the real assigned URL, create the Upstash database and set its two variables, set the two GitHub Actions secrets, manually trigger the first collection run, and run the production smoke checks. None of this was performed or simulated — no external account was created, no real credential was entered anywhere, and no collector run was triggered.
+
+### Remaining limitations
+
+- Documentation has not yet been exercised against a real Supabase/Vercel/Upstash deployment — it is verified for accuracy against the repository's own source (scripts, workflows, migrations, env validation), not against a live account walkthrough. Codex's launch-readiness review is the intended check for that gap, per the working agreement (Claude implements, Codex validates before launch).
+- Free-tier limitation figures (Supabase pause-after-7-days-idle, Vercel Hobby caps, Upstash daily command cap) are documented from each provider's general free-tier terms, not re-verified against this project's specific account state (none exists yet).
+
 ## 2026-09-15 — Codex — M4 accepted; M5 ready
 
 The security and resilience audit is accepted. The sole uncovered gap was corrected by adding a 20-minute job timeout to CI; all twelve mandatory control areas are implemented with no unresolved high- or medium-severity findings.

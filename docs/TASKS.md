@@ -8,7 +8,7 @@ Statuses: `BLOCKED`, `READY`, `IN_PROGRESS`, `REVIEW`, `CHANGES_REQUESTED`, `ACC
 | M2 | Database and ingestion | Claude | M1 | ACCEPTED | Reproducible Supabase migrations/RLS, adapter contract, three configured sources, classification fixtures, safe URL/text normalization, idempotent upsert, complete-scan semantics, and collector tests pass. |
 | M3 | Search and offer experience | Claude | M2 | ACCEPTED | Validated cursor API, filters in URL, offer list/detail pages, local favorites, bilingual states, freshness display, rate limiting, and component/API tests pass. |
 | M4 | Security and resilience corrections | Claude | M3 | ACCEPTED | All findings from Codex review resolved; malicious input, unauthorized writes, SSRF, source failure, headers, secret exposure, and dependency checks pass. |
-| M5 | Production readiness | Claude | M4 | READY | Deployment documentation, operations runbook, initial-import instructions, production build, accessibility/browser smoke tests, and recovery procedure are complete. |
+| M5 | Production readiness | Claude | M4 | REVIEW | Deployment documentation, operations runbook, initial-import instructions, production build, accessibility/browser smoke tests, and recovery procedure are complete. |
 | R1 | Review M1 | Codex | M1 in REVIEW | ACCEPTED | Diff, architecture alignment, UX/accessibility baseline, and checks reviewed; result recorded here and in handoff. |
 | R2 | Review M2 | Codex | M2 in REVIEW | ACCEPTED | Sources, schema, RLS, normalization, idempotency, and failure semantics reviewed. |
 | R3 | Review M3 | Codex | M3 in REVIEW | ACCEPTED | Product behavior, API validation, performance, accessibility, and browser flows reviewed. |
