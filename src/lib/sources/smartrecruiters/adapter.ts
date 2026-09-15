@@ -2,7 +2,7 @@ import { boundedErrorSummary } from '../../ingestion/error-summary'
 import type { CollectionResult, NormalizedCandidate } from '../../ingestion/types'
 import type { SourceAdapter } from '../adapter'
 import { fetchAllowlistedJson, withRetries } from '../http-client'
-import type { SourceConfig } from '../registry'
+import type { SmartRecruitersSourceConfig } from '../registry'
 import { normalizeSmartRecruitersPosting } from './normalize'
 import {
   SmartRecruitersDetailResponseSchema,
@@ -11,7 +11,7 @@ import {
 } from './schema'
 
 export interface SmartRecruitersAdapterOptions {
-  source: SourceConfig
+  source: SmartRecruitersSourceConfig
   fetchImpl?: typeof fetch
   pageSize?: number
   maxPages?: number

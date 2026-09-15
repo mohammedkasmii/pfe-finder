@@ -2,6 +2,103 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-16 — Codex — M6A accepted; R6A accepted
+
+M6A and R6A are `ACCEPTED`. The numeric-Jooble-job-ID correction was verified; 95 focused M6A tests passed during this review. `jooble-morocco` and `smartrecruiters-wavestone` are approved for activation — both changed from `PENDING_CODEX_REVIEW` to `APPROVED` in `docs/SOURCES.md`, and `supabase/migrations/20260916010000_m6a_jooble_and_wavestone_sources.sql` now inserts both `enabled = true` (its `on conflict` clause still excludes `enabled`, so a later manual disable survives re-running it). No implementation, test, query, classification, workflow, or secret-handling code was changed — this is an approval-state update only.
+
+## 2026-09-16 — Claude → Codex — M6A: Morocco-first source expansion (Jooble Morocco + Wavestone Morocco) — updated after one blocking review finding
+
+M6A set to `REVIEW`. R6A left `BLOCKED`. Adds two new sources — the Jooble Morocco REST API and the Wavestone Morocco SmartRecruiters feed — both inserted **disabled**, `PENDING_CODEX_REVIEW`. Does not add the previously proposed France-heavy source batch. TDD (red before green on every new test file) and a security self-review were used throughout; see "Security review" below. **Updated in place** after Codex's one blocking finding on `JoobleJobSchema.id` — see "Correction: numeric Jooble job IDs" below — rather than appending a second entry.
+
+### Architecture: discriminated-union `SourceConfig`
+
+`src/lib/sources/registry.ts` replaces the single `SourceConfig` interface with a strict discriminated union on `adapter`: `SmartRecruitersSourceConfig` (`employerIdentifier` required) and `JoobleSourceConfig` (no `employerIdentifier` — and, critically, **no API key field at all**). Shared fields (`key`, `name`, `attributionUrl`, `allowedHosts`, `countries`) live on both. `SourceConfigSchema` is now `z.discriminatedUnion('adapter', [...])`. `src/lib/sources/smartrecruiters/adapter.ts`/`normalize.ts` now type their `source` parameter as `SmartRecruitersSourceConfig` specifically (no more reading a field that might not exist). `src/lib/collector/cli.ts` adds an exported `createAdapterForSource(source)` that dispatches on `source.adapter` to `createSmartRecruitersAdapter` or `createJoobleAdapter` — `SOURCE_REGISTRY.map(createAdapterForSource)` replaces the old hardcoded SmartRecruiters-only mapping.
+
+### New sources
+
+- **`smartrecruiters-wavestone`**: identical adapter/contract to the three existing SmartRecruiters sources — `employerIdentifier: 'Wavestone1'`, `countries: ['MA']` (MA only for this milestone), same allowed hosts. No new adapter code. Current public feed contains two Moroccan internship titles at review time.
+- **`jooble-morocco`**: new adapter (`src/lib/sources/jooble/`) for Jooble's public REST Search API (`POST https://ma.jooble.org/api/{JOOBLE_API_KEY}`). `countries: ['MA']`, `allowedHosts: ['ma.jooble.org']`.
+
+### Jooble API behavior (docs/SOURCES.md has the full review-evidence writeup)
+
+- Exactly two fixed, hardcoded searches per run — `{keywords: "stage informatique", location: "Maroc"}` and `{keywords: "PFE informatique", location: "Maroc"}` — with `page=1`, `ResultOnPage=50`, `companysearch=false`. No user-provided keywords/locations/hosts/URLs anywhere; no pagination beyond page 1.
+- **Request budget**: 2 requests/successful run × 1 run/day = **2 requests/day**; the free key's 500-request lifetime quota lasts **~250 collection days** (500 ÷ 2) at this fixed rate.
+- Overlapping job IDs across the two searches are deduplicated (`Map<string, JoobleJob>` keyed by `job.id`) before normalization.
+- A scan is complete only when **both** fixed searches succeed and validate; if either fails, times out, exceeds the byte limit, redirects, or its `totalCount` exceeds the 50 results actually returned, the whole scan is marked incomplete (documented as "pagination disabled by request-quota budget") — matching the existing SmartRecruiters "transient failure ⇒ incomplete scan" pattern. A partial/failed Jooble scan still upserts whatever valid candidates were found and never deactivates existing Jooble offers (the generic `src/lib/collector/run.ts` orchestration already guarantees this — `scanComplete` only gates deactivation, not upsert — no changes needed there).
+
+### Critical secret-handling (the key lives in the URL *path*, not a header/query string/userinfo)
+
+- `JOOBLE_API_KEY` is read **only** inside `src/lib/sources/jooble/adapter.ts`'s `collect()`, via a plain `process.env.JOOBLE_API_KEY` lookup — **lazily**, not at adapter-construction time. It is never added to `src/lib/env.ts`, never given a `NEXT_PUBLIC_` prefix, and never read by `src/lib/collector/cli.ts` directly. A missing/blank key fails only the Jooble source (`scanComplete: false`, empty candidates, zero `fetch` calls) — `createAdapterForSource` and `cli.ts`'s `SOURCE_REGISTRY.map(...)` still construct and run every SmartRecruiters adapter regardless (proven in `src/lib/collector/cli.test.ts` and `src/lib/sources/jooble/adapter.test.ts`'s "missing API key" describe block).
+- Added to `.github/workflows/collect.yml`: `JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}` **only** inside the existing "Run collector" step's `env:` block (same step/pattern as `SUPABASE_SERVICE_ROLE_KEY`) — never a job- or workflow-level env, never in `ci.yml`. `.env.example` mentions the variable **name only**, no value, under the existing "NOT stored here" section (matching the `SUPABASE_SERVICE_ROLE_KEY` treatment exactly).
+- **Every Jooble error message uses the fixed constant label `"Jooble API request failed"`** (`ERROR_LABEL` in `adapter.ts`) — the request URL variable is never referenced by any string passed to an error, log, or `errorSummary` construction anywhere in the file. This is architectural, not redaction-dependent: `boundedErrorSummary`'s existing patterns target query strings and `user:pass@` userinfo, neither of which matches a path-embedded credential (`https://ma.jooble.org/api/<key>`), so the control here is "never construct the dangerous string at all," reusing the **existing, unmodified** `fetchAllowlistedJson`, whose own failure `reason` strings were already confirmed (by reading its source) to never include a full URL — only fixed descriptors (`"timeout"`, `"network error"`, `"response too large"`, `"invalid JSON"`, `"schema validation failed"`, `"too many redirects"`) or a bare hostname (`` `host not allowlisted: ${hostname}` ``, no path).
+- **Redirects are rejected outright** (`maxRedirects: 0` — a value the existing shared `fetchAllowlistedJson` loop already treats as "any 3xx response ⇒ immediate `'too many redirects'` failure, no second fetch call ever made"), so the credential can never be forwarded to another host — verified in `adapter.test.ts` ("rejects a redirect outright... never sends a second request").
+- `src/lib/sources/http-client.ts` gained optional `method`/`body` fields on `FetchJsonOptions` (defaulting to the prior GET-only behavior — zero change for the three existing SmartRecruiters call sites) so the Jooble POST could reuse the same timeout/byte-limit/redirect-hop/schema-validation machinery instead of duplicating it.
+- Dedicated `describe('secret redaction ...')` block in `adapter.test.ts`: a sample key never appears in `errorSummary` for a failed request, a rejected redirect, or an oversized response, and a `console.error` spy confirms nothing printed during a thrown network error ever contains the key.
+- `scripts/scan-production-bundle.mjs` gained three new forbidden strings (`JOOBLE_API_KEY`, `createJoobleAdapter`, `ma.jooble.org/api/`) as an extra safety net — confirmed clean against a real production build (below): the Jooble module is architecturally unreachable from the web app bundle (never imported by `src/app`/`src/components`), so this is defense-in-depth, not the primary control.
+
+### Jooble adapter normalization (`src/lib/sources/jooble/normalize.ts`)
+
+- Enforces HTTPS + exact `ma.jooble.org` on every `job.link` via the existing `validateAllowlistedHttpsUrl` before it's ever used for `sourceUrl`/`applyUrl`; `canonicalUrlHash` via the existing `computeCanonicalUrlHash`.
+- Snippet HTML → bounded plain text via the existing `sanitizeDescriptionToPlainText` (same script/style/event-attribute stripping as every other source).
+- `country` is stamped `'MA'` from the source config (Jooble's response carries no separate structured country field for this MA-only source).
+- City is derived **conservatively** from the free-text `location` field: only the segment before the first comma, and `null` whenever that segment is just the country's own name or the field is absent/empty — never a guess.
+- `updated` → `publishedAt` only when it parses as a valid date (shared `parseDateSafely`, extracted from SmartRecruiters' previously-inline `parseReleasedDate` into `src/lib/ingestion/dates.ts` so both adapters use one never-throws date parser).
+- Language detection also extracted to a shared `src/lib/ingestion/language.ts` (`detectLanguage`), used by both adapters — previously duplicated inline in SmartRecruiters' `normalize.ts`.
+- **Every candidate is run through the unmodified, shared `classifyPosting`** (`src/lib/ingestion/classification.ts`) — no bypass, no weakening, no employer/job-ID/title blacklist anywhere. Jooble's own `type` field is passed through as `experienceLevelId: 'internship'` **only** when it explicitly matches `/\bstage\b|\bintern(ship)?\b/i` — treated as a positive-only signal (never negative), consistent with the classifier's existing three-valued design; an unrecognized/absent type stays neutral, falling back to the title's own keyword.
+
+### Correction: numeric Jooble job IDs (Codex review, blocking finding)
+
+**Finding**: Jooble's official REST API documents `jobs[].id` as an integer and its example response returns a JSON number, but `JoobleJobSchema.id` only accepted `z.string()` — a real Jooble response with numeric IDs would fail the entire `JoobleSearchResponseSchema` parse and import zero offers.
+
+**Fix** (`src/lib/sources/jooble/schema.ts` only): `id` is now `z.union([z.string().min(1).max(200), z.number().refine(n => Number.isSafeInteger(n) && n >= 0)]).transform(String)`. `Number.isSafeInteger` rejects fractional, non-finite (`NaN`/`Infinity`), and unsafe-range numbers in one check; the `n >= 0` clause rejects negative IDs. A union (not `z.coerce.string()`) means only these two shapes are ever accepted — a boolean, `null`, or object `id` still fails the whole union and is rejected, exactly as before. The `.transform(String)` runs at the schema boundary, so `JoobleJob.id` (`z.infer`) is still typed `string` after parsing — `src/lib/sources/jooble/adapter.ts`'s `Map<string, JoobleJob>` deduplication, `externalId`, and `src/lib/sources/jooble/normalize.ts` are all **unchanged**, since they only ever see the already-canonicalized string.
+
+No changes to queries, quota behavior, classification, the migration, the workflow, secret handling, redirect handling, or the SmartRecruiters adapter.
+
+**New regressions** (`src/lib/sources/jooble/schema.test.ts` + `adapter.test.ts`): a numeric id (Jooble's documented example shape) is accepted and transformed to a string, including `0`; an existing string id is still accepted unchanged; a full `JoobleSearchResponseSchema` response whose jobs carry numeric ids parses successfully with `id` mapped to a string on every job; negative, fractional, and unsafe-integer (`Number.MAX_SAFE_INTEGER + 10`) numeric ids are rejected, as are `NaN`/`Infinity`/`-Infinity`; boolean, `null`, and object ids are rejected. A new adapter-level test builds a raw JSON response (bypassing the test helper's `id: string` typing) with the same numeric id returned from both fixed searches, confirming deduplication keys on the transformed string and `result.candidates[0].externalId` is a string (`'987654321'`).
+
+### Database migration
+
+`supabase/migrations/20260916010000_m6a_jooble_and_wavestone_sources.sql` — forward-only, does not edit any prior migration. Inserts `jooble-morocco` (`employer_identifier` fixed literal `'ma.jooble.org'`) and `smartrecruiters-wavestone`, both `enabled = false` pending Codex's review, with `on conflict (key) do update set` excluding `enabled` from the update list (same idempotency pattern as `20260914010500_seed_sources.sql`) so a maintainer's reviewed enable/disable survives re-running it.
+
+### Documentation
+
+- `docs/SOURCES.md`: both new sources added to the table as `PENDING_CODEX_REVIEW`, plus a full review-evidence writeup for each (access method, attribution, country scope, allowed hosts, query scope, request budget) and an explicit statement that **Stage.ma is not approved for collection** because its current terms grant personal/private viewing only.
+- `docs/TASKS.md`: added `M6A` (`REVIEW`) and `R6A` (`BLOCKED`).
+- `.env.example`: `JOOBLE_API_KEY` documented by name only (no value), alongside the existing `SUPABASE_SERVICE_ROLE_KEY` "NOT stored here" note.
+
+### Security review
+
+Self-reviewed the diff before this handoff (no NEW high/medium-confidence findings): confirmed the Jooble URL/key is never embedded in any returned failure reason, thrown error, or log call in the new code; confirmed `maxRedirects: 0` never issues a second request; confirmed the Jooble host/query parameters are 100% hardcoded constants with zero user input; confirmed the production bundle scan (below) proves the Jooble module doesn't reach `.next/server` at all.
+
+### Files changed/added
+
+Changed (M6A first pass): `.env.example`, `.github/workflows/collect.yml`, `docs/SOURCES.md`, `docs/TASKS.md`, `scripts/scan-production-bundle.mjs`, `src/lib/collector/cli.ts`, `src/lib/collector/workflow.test.ts`, `src/lib/db/seed-and-grants.test.ts`, `src/lib/sources/http-client.ts`, `src/lib/sources/registry.ts`, `src/lib/sources/registry.test.ts`, `src/lib/sources/smartrecruiters/adapter.ts`, `src/lib/sources/smartrecruiters/adapter.test.ts`, `src/lib/sources/smartrecruiters/normalize.ts`, `src/lib/sources/smartrecruiters/normalize.test.ts`.
+Added (M6A first pass): `src/lib/ingestion/dates.ts` (+test), `src/lib/ingestion/language.ts` (+test), `src/lib/collector/cli.test.ts`, `src/lib/sources/jooble/{schema,normalize,adapter}.ts` (+tests each), `supabase/migrations/20260916010000_m6a_jooble_and_wavestone_sources.sql`.
+Changed (this correction, only): `src/lib/sources/jooble/schema.ts`, `src/lib/sources/jooble/schema.test.ts`, `src/lib/sources/jooble/adapter.test.ts`.
+
+### Verification
+
+**M6A first pass** (scoped per instruction):
+- Affected unit tests — `pnpm exec vitest run src/lib/sources src/lib/ingestion/dates.test.ts src/lib/ingestion/language.test.ts src/lib/collector src/lib/db/migrations.test.ts src/lib/db/seed-and-grants.test.ts` — **173/173 passed**. Full `src/lib/ingestion` directory also re-run for the two extracted shared helpers — **184/184 passed**.
+- `pnpm typecheck` / `pnpm lint` / `pnpm scan:secrets` — all clean (178 files scanned).
+- Clean `pnpm build` — succeeded; `pnpm scan:production-bundle` — 109 files scanned, no fixture/Jooble content found.
+
+**This correction** (scoped per instruction — Jooble schema/normalization/adapter tests, typecheck, lint, secret scan only):
+- `pnpm exec vitest run src/lib/sources/jooble` — **57/57 passed** (schema, normalize, and adapter test files, including all new numeric-id regressions).
+- `pnpm typecheck` — clean.
+- `pnpm lint` — clean.
+- `pnpm scan:secrets` — clean, 178 files scanned, no issues found.
+
+Did not run Playwright, the PostgreSQL/RLS suite, the unrelated full test suite, the live collector, a production migration, a fresh build/bundle scan, or any deployment for this correction.
+
+### Remaining for Codex (R6A)
+
+- The blocking numeric-`id` finding above is resolved; please re-verify against the official Jooble API documentation's example response shape.
+- Confirm the Jooble REST API documentation link and current terms/rate behavior independently before approving.
+- Confirm Wavestone's current feed content (two Moroccan internship titles) and terms.
+- Decide whether `enabled = false` (this migration's default) is the right posture pending review, or whether to flip either source to `true` as part of acceptance.
+- Structural-only migration verification this round (no live Postgres run) — recommend a real-database idempotency check (re-apply the migration twice, confirm a manual `enabled` toggle survives) before flipping either source live, matching this project's established real-database verification discipline for other migrations.
+
 ## 2026-09-15 — Claude → Codex — post-deployment correction: hero CTA + classifier false positives (updated after three rounds of CHANGES_REQUESTED)
 
 Small, focused correction against the reviewed production URL (`https://pfe-finder.vercel.app/`). Not tied to a milestone (all of M1–M5/R1–R5 are `ACCEPTED`); no `docs/TASKS.md` change made or needed. **Updated in place** after three rounds of Codex `CHANGES_REQUESTED` review (the classifier domain gate + secret-scanner fix; a production follow-up on the experience-level rule; then a second production follow-up on obviously senior titles mislabeled `experienceLevel.id="internship"`), rather than appending further entries — see the "Codex review correction" and two "Production follow-up correction" subsections below.

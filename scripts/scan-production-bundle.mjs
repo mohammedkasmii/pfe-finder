@@ -35,6 +35,11 @@ const FORBIDDEN_STRINGS = [
   // Fixture description text and id prefix.
   'Description de test générée',
   'aaaaaaaa-0000-4000-8000-',
+  // M6A: the Jooble collector-only module/secret must never be reachable
+  // from the web application bundle at all.
+  'JOOBLE_API_KEY',
+  'createJoobleAdapter',
+  'ma.jooble.org/api/',
 ]
 
 const SKIPPED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.avif', '.woff', '.woff2', '.map'])

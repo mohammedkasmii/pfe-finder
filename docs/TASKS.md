@@ -9,11 +9,13 @@ Statuses: `BLOCKED`, `READY`, `IN_PROGRESS`, `REVIEW`, `CHANGES_REQUESTED`, `ACC
 | M3 | Search and offer experience | Claude | M2 | ACCEPTED | Validated cursor API, filters in URL, offer list/detail pages, local favorites, bilingual states, freshness display, rate limiting, and component/API tests pass. |
 | M4 | Security and resilience corrections | Claude | M3 | ACCEPTED | All findings from Codex review resolved; malicious input, unauthorized writes, SSRF, source failure, headers, secret exposure, and dependency checks pass. |
 | M5 | Production readiness | Claude | M4 | ACCEPTED | Deployment documentation, operations runbook, initial-import instructions, production build, accessibility/browser smoke tests, and recovery procedure are complete. |
+| M6A | Morocco-first source expansion (Jooble Morocco + Wavestone Morocco) | Claude | M5 | ACCEPTED | Discriminated-union source registry, Jooble adapter with fixed-query/no-pagination/secret-handling controls, Wavestone SmartRecruiters source, forward-only idempotent migration inserting both approved sources enabled, `docs/SOURCES.md` review evidence, and focused tests pass. |
 | R1 | Review M1 | Codex | M1 in REVIEW | ACCEPTED | Diff, architecture alignment, UX/accessibility baseline, and checks reviewed; result recorded here and in handoff. |
 | R2 | Review M2 | Codex | M2 in REVIEW | ACCEPTED | Sources, schema, RLS, normalization, idempotency, and failure semantics reviewed. |
 | R3 | Review M3 | Codex | M3 in REVIEW | ACCEPTED | Product behavior, API validation, performance, accessibility, and browser flows reviewed. |
 | R4 | Security review | Codex | M4 in REVIEW | ACCEPTED | `docs/SECURITY.md` review tests executed with no unresolved high/medium findings. |
 | R5 | Launch acceptance | Codex | M5 in REVIEW | ACCEPTED | Complete acceptance suite passes and remaining free-tier limitations are documented. |
+| R6A | Review M6A | Codex | M6A in REVIEW | ACCEPTED | Jooble secret-handling controls, discriminated-union registry, adapter factory dispatch, migration idempotency, and `docs/SOURCES.md` review evidence audited with no unresolved findings. |
 
 ## Branch and review rules
 

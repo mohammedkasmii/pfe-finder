@@ -43,4 +43,8 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # M6A: Jooble Morocco. Loaded lazily, collector-only, inside
+          # src/lib/sources/jooble/adapter.ts — never read by src/lib/env.ts
+          # or any web application module, and never NEXT_PUBLIC_-prefixed.
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
         run: pnpm run collect

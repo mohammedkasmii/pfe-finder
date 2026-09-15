@@ -30,6 +30,17 @@ describe('collect.yml', () => {
     expect(workflow).toMatch(/SUPABASE_SERVICE_ROLE_KEY:\s*\$\{\{\s*secrets\.SUPABASE_SERVICE_ROLE_KEY\s*\}\}/)
   })
 
+  it('reads JOOBLE_API_KEY only from GitHub Actions secrets, exactly once, in the Run collector step, never NEXT_PUBLIC_-prefixed (M6A)', () => {
+    const matches = [...workflow.matchAll(/JOOBLE_API_KEY:\s*\$\{\{\s*secrets\.JOOBLE_API_KEY\s*\}\}/g)]
+    expect(matches).toHaveLength(1)
+    expect(workflow).not.toMatch(/NEXT_PUBLIC_JOOBLE_API_KEY/)
+    // The single occurrence of the key name must fall after "Run collector"
+    // and before the next step (there is no further step in this workflow).
+    const runCollectorIndex = workflow.indexOf('Run collector')
+    const joobleIndex = workflow.indexOf('JOOBLE_API_KEY')
+    expect(joobleIndex).toBeGreaterThan(runCollectorIndex)
+  })
+
   it('bounds job runtime with timeout-minutes', () => {
     expect(workflow).toMatch(/timeout-minutes:\s*\d+/)
   })

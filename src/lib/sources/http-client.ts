@@ -9,9 +9,18 @@ export type FetchJsonResult<T> =
 export interface FetchJsonOptions {
   timeoutMs: number
   maxResponseBytes: number
+  /** Redirects to follow (each hop re-validated against `allowedHosts`).
+   * Pass `0` to reject any redirect outright — the credential-bearing
+   * Jooble adapter does this so a redirect can never forward its API key
+   * to another host (docs/SECURITY.md M6A). */
   maxRedirects: number
   allowedHosts: readonly string[]
   fetchImpl: typeof fetch
+  /** Defaults to `GET`. */
+  method?: 'GET' | 'POST'
+  /** Request body for `method: 'POST'`. Never logged, returned, or
+   * included in any failure reason string below. */
+  body?: string
 }
 
 /**
@@ -53,9 +62,14 @@ export async function fetchAllowlistedJson<T>(
       let response: Response
       try {
         response = await options.fetchImpl(validated.url, {
+          method: options.method ?? 'GET',
+          body: options.body,
           redirect: 'manual',
           signal: controller.signal,
-          headers: { accept: 'application/json' },
+          headers:
+            options.method === 'POST'
+              ? { accept: 'application/json', 'content-type': 'application/json' }
+              : { accept: 'application/json' },
         })
       } catch (error) {
         const isAbort = error instanceof Error && error.name === 'AbortError'

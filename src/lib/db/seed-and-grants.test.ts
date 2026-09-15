@@ -10,6 +10,10 @@ const canonicalMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010600_off
 const grantsMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010700_service_role_grants.sql'), 'utf8')
 const finalizeMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010800_finalize_ingestion_run.sql'), 'utf8')
 const searchOffersMigration = readFileSync(join(MIGRATIONS_DIR, '20260914020000_search_offers_function.sql'), 'utf8')
+const m6aSourcesMigration = readFileSync(
+  join(MIGRATIONS_DIR, '20260916010000_m6a_jooble_and_wavestone_sources.sql'),
+  'utf8',
+)
 
 describe('cleanup_inactive_offers migration (structural)', () => {
   it('revokes public/anon/authenticated access before granting execute only to service_role', () => {
@@ -32,6 +36,47 @@ describe('seed_sources migration (structural)', () => {
   it('never overwrites `enabled` on conflict, so a manual disable survives re-seeding', () => {
     const updateSetClause = seedMigration.split(/on conflict \(key\) do update set/)[1]!
     expect(updateSetClause).not.toMatch(/\benabled\s*=/)
+  })
+})
+
+describe('M6A jooble/wavestone sources migration (structural)', () => {
+  it('idempotently inserts exactly the two new M6A source keys', () => {
+    for (const key of ['jooble-morocco', 'smartrecruiters-wavestone']) {
+      expect(m6aSourcesMigration).toContain(key)
+    }
+    expect(m6aSourcesMigration).toMatch(/on conflict \(key\) do update set/)
+  })
+
+  it('inserts both new sources disabled (enabled = false), pending Codex review', () => {
+    const valuesClause = m6aSourcesMigration.split(/on conflict \(key\) do update set/)[0]!
+    const rowLines = valuesClause
+      .split('\n')
+      .filter((line) => line.trim().startsWith("('jooble-morocco'") || line.trim().startsWith("('smartrecruiters-wavestone'"))
+    expect(rowLines).toHaveLength(2)
+    for (const line of rowLines) {
+      expect(line).toMatch(/,\s*false\)/)
+    }
+  })
+
+  it('never overwrites `enabled` on conflict, so a reviewed enable/disable survives re-running this migration', () => {
+    const updateSetClause = m6aSourcesMigration.split(/on conflict \(key\) do update set/)[1]!
+    expect(updateSetClause).not.toMatch(/\benabled\s*=/)
+  })
+
+  it('never edits any prior migration file (forward-only) and does not carry a JOOBLE_API_KEY value', () => {
+    expect(m6aSourcesMigration).not.toMatch(/JOOBLE_API_KEY\s*=\s*['"]?\w/)
+    expect(seedMigration).not.toContain('jooble-morocco')
+    expect(seedMigration).not.toContain('smartrecruiters-wavestone')
+  })
+
+  it('gives jooble-morocco the fixed employer_identifier "ma.jooble.org" and the exact allowlisted host', () => {
+    expect(m6aSourcesMigration).toMatch(/'jooble-morocco',\s*'Jooble Morocco',\s*'jooble',\s*'ma\.jooble\.org'/)
+    expect(m6aSourcesMigration).toMatch(/array\['ma\.jooble\.org'\]/)
+  })
+
+  it('configures smartrecruiters-wavestone with its documented employer identifier, MA-only', () => {
+    expect(m6aSourcesMigration).toMatch(/'smartrecruiters-wavestone',\s*'Wavestone',\s*'smartrecruiters',\s*'Wavestone1'/)
+    expect(m6aSourcesMigration).toMatch(/'smartrecruiters-wavestone'[\s\S]*?array\['MA'\]/)
   })
 })
 

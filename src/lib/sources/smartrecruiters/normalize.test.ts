@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { NormalizedCandidateSchema } from '../../ingestion/types'
-import { SOURCE_REGISTRY } from '../registry'
+import { SOURCE_REGISTRY, type SmartRecruitersSourceConfig } from '../registry'
 import { normalizeSmartRecruitersPosting } from './normalize'
 import type { SmartRecruitersDetailResponse } from './schema'
 
-const inetum = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-inetum')!
-const devoteam = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-devoteam')!
+const inetum = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-inetum')! as SmartRecruitersSourceConfig
+const devoteam = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-devoteam')! as SmartRecruitersSourceConfig
 
 function detail(overrides: Partial<SmartRecruitersDetailResponse> = {}): SmartRecruitersDetailResponse {
   return {

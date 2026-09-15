@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SOURCE_REGISTRY } from '../registry'
+import { SOURCE_REGISTRY, type SmartRecruitersSourceConfig } from '../registry'
 import { createSmartRecruitersAdapter } from './adapter'
 
-const inetum = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-inetum')! // MA + FR
-const devoteam = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-devoteam')! // FR only
+const inetum = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-inetum')! as SmartRecruitersSourceConfig // MA + FR
+const devoteam = SOURCE_REGISTRY.find((s) => s.key === 'smartrecruiters-devoteam')! as SmartRecruitersSourceConfig // FR only
 
 function listingResponse(content: { id: string; name: string }[], totalFound: number, offset = 0) {
   return new Response(JSON.stringify({ totalFound, offset, limit: 100, content }), {
