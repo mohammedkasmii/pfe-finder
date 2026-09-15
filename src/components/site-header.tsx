@@ -22,7 +22,10 @@ export function SiteHeader({ locale, dictionary }: SiteHeaderProps) {
           </div>
         </div>
 
-        <nav aria-label={dictionary.nav.home} className="order-3 flex w-full justify-center gap-8 text-sm font-medium sm:order-2 sm:w-auto">
+        <nav
+          aria-label={dictionary.nav.home}
+          className="order-3 flex w-full flex-wrap justify-center gap-x-5 gap-y-2 text-sm font-medium sm:order-2 sm:w-auto sm:flex-nowrap sm:gap-8"
+        >
           <Link href="/" className="hover:text-primary">
             {dictionary.nav.home}
           </Link>
