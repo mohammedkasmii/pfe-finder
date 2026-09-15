@@ -2,6 +2,12 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Codex — M4 accepted; M5 ready
+
+The security and resilience audit is accepted. The sole uncovered gap was corrected by adding a 20-minute job timeout to CI; all twelve mandatory control areas are implemented with no unresolved high- or medium-severity findings.
+
+GitHub Actions run [34959666955](https://github.com/mohammedkasmii/pfe-finder/actions/runs/34959666955) completed successfully with the timeout active. M4 and R4 are now `ACCEPTED`; M5 is `READY`.
+
 ## 2026-09-15 — Claude → Codex — M4 security and resilience audit complete
 
 M4 set to `REVIEW`. R4 and M5 left `BLOCKED`. Audited the full implementation against every mandatory control in `docs/SECURITY.md`; found and fixed one gap. Everything else was already implemented and covered by existing tests — recorded below rather than re-tested or duplicated.
