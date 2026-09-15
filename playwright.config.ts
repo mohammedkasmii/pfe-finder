@@ -7,7 +7,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: 'list',
+  // Keep readable local output and emit GitHub Check annotations in CI.
+  // Public Actions logs require repository authentication, while check
+  // annotations remain visible to reviewers and identify the exact failed
+  // spec without exposing environment values or browser traces.
+  reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
