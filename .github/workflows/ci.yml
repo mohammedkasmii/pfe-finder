@@ -52,6 +52,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Scan production bundle for fixture leakage
+        run: pnpm scan:production-bundle
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 

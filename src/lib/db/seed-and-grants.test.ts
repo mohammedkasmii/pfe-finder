@@ -9,6 +9,7 @@ const seedMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010500_seed_sou
 const canonicalMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010600_offers_canonical_unique.sql'), 'utf8')
 const grantsMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010700_service_role_grants.sql'), 'utf8')
 const finalizeMigration = readFileSync(join(MIGRATIONS_DIR, '20260914010800_finalize_ingestion_run.sql'), 'utf8')
+const searchOffersMigration = readFileSync(join(MIGRATIONS_DIR, '20260914020000_search_offers_function.sql'), 'utf8')
 
 describe('cleanup_inactive_offers migration (structural)', () => {
   it('revokes public/anon/authenticated access before granting execute only to service_role', () => {
@@ -127,5 +128,68 @@ describe('finalize_ingestion_run migration (structural)', () => {
     const rowCountAssertions = (finalizeMigration.match(/if v_row_count <> 1 then/g) ?? []).length
     // finalize_completed_run asserts sources + ingestion_runs (2); finalize_failed_run asserts sources + ingestion_runs (2).
     expect(rowCountAssertions).toBe(4)
+  })
+})
+
+describe('search_offers migration (structural)', () => {
+  const codeLines = searchOffersMigration.split('\n').filter((line) => !line.trim().startsWith('--'))
+  const codeText = codeLines.join('\n')
+
+  it('never builds a PostgREST .or()/in filter or a raw not.in string', () => {
+    expect(codeText).not.toMatch(/\.or\(/)
+    expect(codeText).not.toMatch(/not\.in/)
+  })
+
+  it('grants execute to anon only, after revoking public, for both functions', () => {
+    for (const fn of ['escape_ilike_pattern(text)', 'search_offers(text,text,text,text,text,text,boolean,text,text,timestamptz,uuid,integer)']) {
+      const revokeIndex = searchOffersMigration.indexOf(`revoke all on function public.${fn} from public;`)
+      const grantIndex = searchOffersMigration.indexOf(`grant execute on function public.${fn} to anon;`)
+      expect(revokeIndex).toBeGreaterThan(-1)
+      expect(grantIndex).toBeGreaterThan(-1)
+      expect(grantIndex).toBeGreaterThan(revokeIndex)
+    }
+  })
+
+  it('is not declared security definer (must run under the caller\'s own RLS)', () => {
+    expect(codeText).not.toMatch(/security definer/i)
+  })
+
+  it('builds every ilike pattern only via the four documented ilike comparisons (city filter + q against title/company/city), each escaped and routed through escape_ilike_pattern', () => {
+    // Matches only actual `column ilike` comparisons — not the
+    // `escape_ilike_pattern` function name, which also contains the
+    // substring "ilike" and would otherwise inflate this count.
+    const ilikeComparisonLines = codeLines.filter((line) => /\bo\.\w+ ilike /i.test(line))
+    expect(ilikeComparisonLines).toHaveLength(4)
+    for (const line of ilikeComparisonLines) {
+      expect(line).toMatch(/escape_ilike_pattern/)
+      expect(line).toMatch(/escape '\\'/)
+    }
+  })
+
+  it('searches specialties and technologies via a safely escaped unnest(), never array_to_string (which could false-match across a concatenation boundary)', () => {
+    const tagSearchLines = codeLines.filter((line) => /tag ilike /i.test(line))
+    expect(tagSearchLines.length).toBeGreaterThan(0)
+    for (const line of tagSearchLines) {
+      expect(line).toMatch(/escape_ilike_pattern/)
+      expect(line).toMatch(/escape '\\'/)
+    }
+    expect(codeText).toMatch(/unnest\(o\.specialties \|\| o\.technologies\)/)
+    expect(codeText).not.toMatch(/array_to_string/)
+  })
+
+  it('sanitizes every direct-RPC-callable input via a `with sanitized as (...)` CTE before using it in the WHERE clause', () => {
+    expect(codeText).toMatch(/with sanitized as \(/)
+    // Length bounds mirror src/lib/offers/query-schema.ts.
+    expect(codeText).toMatch(/left\(p_query, 100\)/)
+    expect(codeText).toMatch(/left\(p_city, 80\)/)
+    expect(codeText).toMatch(/left\(p_technology, 40\)/)
+    // p_limit is clamped to [1, 25] — the server's own max UI limit (24) + 1.
+    expect(codeText).toMatch(/least\(greatest\(coalesce\(p_limit, \d+\), 1\), 25\)/)
+    // The cursor pair is only honored when both value and id are present.
+    expect(codeText).toMatch(/p_cursor_value is not null and p_cursor_id is not null/)
+  })
+
+  it('hard-codes status = active as defense in depth', () => {
+    expect(codeText).toMatch(/o\.status = 'active'/)
   })
 })

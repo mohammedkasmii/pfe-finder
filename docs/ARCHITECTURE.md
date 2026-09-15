@@ -51,6 +51,10 @@ Constraints: unique `(source_key, external_id)`; country limited to `MA`/`FR`; s
 
 Return `{ items, nextCursor, freshness }`. Each public item excludes internal errors and ingestion metadata. Stable detail pages use `/offers/{uuid}` and return 404 for inactive or missing offers.
 
+All filtering, sorting, and keyset pagination happen inside one parameterized Postgres function (`search_offers`, `security invoker`, RLS-respecting) so the TypeScript layer never builds a PostgREST `.or()`/`in`/filter-grammar string from user input. The cursor is an HMAC-SHA256-signed, length-bounded opaque token (`src/lib/offers/cursor.ts`) encoding the last row's sort key and id — never trusted without verifying its signature first.
+
+`GET /api/offers` and the `/offers` server page's own initial request are both rate-limited per client IP via Upstash Redis (`@upstash/ratelimit` + `@upstash/redis`, serverless/shared across function instances — unlike an in-process counter, which resets per Vercel invocation and provides no real protection). Rate limiting is **mandatory in production** — environment validation refuses to boot without a complete, valid `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` pair — and stays optional only in development/CI, where both may be left unset. Once configured, a runtime Redis error/timeout still fails open (the request proceeds normally rather than the API breaking or exposing the underlying error) — a rate limiter is an abuse/cost control, not the app's security boundary (RLS, parameterized queries, and bounded parameters are).
+
 ## Source adapter contract
 
 Each adapter exposes a configured source key and `collect(): Promise<CollectionResult>`. A result includes normalized candidates, completeness, and bounded metrics. Fetching accepts no browser/user URL. Network requests have timeouts, response-size limits, retry only transient errors with jitter, and reject redirects outside the allowlist.

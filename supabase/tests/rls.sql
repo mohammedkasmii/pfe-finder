@@ -453,4 +453,322 @@ end $$;
 
 reset role;
 
+-- =====================================================================
+-- Part 6: search_offers() — the M3 public search function. Filtering,
+-- sorting, keyset pagination stability, and inert handling of
+-- injection-shaped input, all called as anon (matching how PostgREST
+-- actually invokes it).
+-- =====================================================================
+
+do $$
+begin
+  insert into public.sources (key, name, adapter, employer_identifier, attribution_url, allowed_hosts, countries)
+  values ('search-test-source', 'Search Test Source', 'smartrecruiters', 'SearchTestCo', 'https://jobs.smartrecruiters.com/SearchTestCo', array['api.smartrecruiters.com'], array['MA','FR']);
+
+  insert into public.offers (
+    source_key, external_id, source_url, apply_url, canonical_url_hash, title, company, city,
+    country, language, status, work_mode, is_pfe, specialties, technologies, published_at, first_seen_at, last_seen_at
+  ) values
+    ('search-test-source', 'search-1', 'https://jobs.smartrecruiters.com/SearchTestCo/1', 'https://jobs.smartrecruiters.com/SearchTestCo/1/apply', 'hash-search-1', 'Stage Développeur React', 'Acme', 'Casablanca', 'MA', 'fr', 'active', 'remote', true, array['software-web-mobile'], array['React'], now() - interval '1 day', now() - interval '1 day', now() - interval '1 day'),
+    ('search-test-source', 'search-2', 'https://jobs.smartrecruiters.com/SearchTestCo/2', 'https://jobs.smartrecruiters.com/SearchTestCo/2/apply', 'hash-search-2', 'Stage Data Scientist', 'Beta', 'Paris', 'FR', 'fr', 'active', 'onsite', false, array['data-ai'], array['Python'], now() - interval '2 days', now() - interval '2 days', now() - interval '2 days'),
+    -- Same published_at as search-2 (equal-timestamp tiebreak case) but a
+    -- lexicographically DIFFERENT id from search-2 — used below to prove
+    -- keyset pagination with p_limit=1 visits both exactly once, in a
+    -- deterministic order, with no skip/repeat.
+    ('search-test-source', 'search-3', 'https://jobs.smartrecruiters.com/SearchTestCo/3', 'https://jobs.smartrecruiters.com/SearchTestCo/3/apply', 'hash-search-3', 'Stage Cybersécurité', 'Gamma', 'Rabat', 'MA', 'fr', 'active', 'hybrid', false, array['cybersecurity'], array[]::text[], now() - interval '2 days', now() - interval '2 days', now() - interval '2 days'),
+    ('search-test-source', 'search-inactive', 'https://jobs.smartrecruiters.com/SearchTestCo/4', 'https://jobs.smartrecruiters.com/SearchTestCo/4/apply', 'hash-search-4', 'Stage Inactif', 'Delta', 'Casablanca', 'MA', 'fr', 'inactive', 'unknown', false, array[]::text[], array[]::text[], now() - interval '3 days', now() - interval '3 days', now() - interval '3 days'),
+    -- Its title/company/city contain NONE of 'KotlinUnique' — the only
+    -- possible match is the technologies array. Reproduces Codex's exact
+    -- finding-1 fixture shape.
+    ('search-test-source', 'search-5', 'https://jobs.smartrecruiters.com/SearchTestCo/5', 'https://jobs.smartrecruiters.com/SearchTestCo/5/apply', 'hash-search-5', 'Stage Backend', 'Zeta', 'Fes', 'MA', 'fr', 'active', 'unknown', false, array['qa-testing'], array['KotlinUnique'], now() - interval '4 days', now() - interval '4 days', now() - interval '4 days');
+end $$;
+
+set local role anon;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,10)
+    where source_key = 'search-test-source';
+  if v_count <> 4 then
+    raise exception 'FAIL: search_offers with no filters should return exactly the 4 active fixture offers, saw %', v_count;
+  end if;
+  if exists (
+    select 1 from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,10)
+    where external_id = 'search-inactive'
+  ) then
+    raise exception 'FAIL: search_offers must never return an inactive offer';
+  end if;
+  raise notice 'PASS: search_offers with no filters returns only the active fixture offers';
+end $$;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.search_offers('''; drop table offers; --',null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  if v_count <> 0 then
+    raise exception 'FAIL: an injection-shaped q value should match nothing (treated as inert literal text), saw %', v_count;
+  end if;
+  -- And prove the table really is still there and unharmed.
+  perform 1 from public.offers limit 1;
+  raise notice 'PASS: an injection-shaped q value is treated as inert text and the offers table is untouched';
+end $$;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.search_offers('react',null,null,null,null,null,null,null,'newest',null,null,10);
+  if v_count <> 1 then
+    raise exception 'FAIL: q=react should match exactly 1 offer (title), saw %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers(null,'MA',null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  if v_count <> 3 then
+    raise exception 'FAIL: country=MA should match 3 of the 4 fixture offers, saw %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers(null,null,null,'data-ai',null,null,null,null,'newest',null,null,10);
+  if v_count <> 1 then
+    raise exception 'FAIL: specialty=data-ai should match exactly 1 offer, saw %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers(null,null,null,null,'Python',null,null,null,'newest',null,null,10);
+  if v_count <> 1 then
+    raise exception 'FAIL: technology=Python should match exactly 1 offer, saw %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers(null,null,null,null,null,'remote',null,null,'newest',null,null,10);
+  if v_count <> 1 then
+    raise exception 'FAIL: workMode=remote should match exactly 1 offer, saw %', v_count;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers(null,null,null,null,null,null,true,null,'newest',null,null,10);
+  if v_count <> 1 then
+    raise exception 'FAIL: pfe=true should match exactly 1 offer, saw %', v_count;
+  end if;
+
+  raise notice 'PASS: each individual filter (q, country, specialty, technology, workMode, pfe) narrows results correctly';
+end $$;
+
+do $$
+declare
+  v_escaped text;
+  v_count integer;
+begin
+  select public.escape_ilike_pattern('50%_off') into v_escaped;
+  if v_escaped <> '50\%\_off' then
+    raise exception 'FAIL: escape_ilike_pattern should escape %% and _ , got %', v_escaped;
+  end if;
+
+  select count(*) into v_count
+  from public.search_offers('%',null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  if v_count <> 0 then
+    raise exception 'FAIL: a literal %% in q must not act as a wildcard matching everything, saw %', v_count;
+  end if;
+
+  raise notice 'PASS: escape_ilike_pattern escapes LIKE wildcards and a literal %% in q matches nothing';
+end $$;
+
+do $$
+declare
+  v_first_id uuid;
+  v_first_published timestamptz;
+  v_second_id uuid;
+  v_visited_ids uuid[] := array[]::uuid[];
+begin
+  -- search-2 and search-3 share the same published_at. Page through them
+  -- one at a time (p_limit = 1) using (published_at, id) as the cursor,
+  -- and confirm each of the two is visited EXACTLY once, in a
+  -- deterministic (id-descending, since published_at ties) order.
+  select id, published_at into v_first_id, v_first_published
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,1)
+  where source_key = 'search-test-source' and external_id in ('search-2','search-3')
+  limit 1;
+
+  -- The very first call has no cursor at all; re-derive it directly to
+  -- avoid relying on ordering across the two fixture rows for anything
+  -- other than "some deterministic order exists".
+  select id, published_at into v_first_id, v_first_published
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source' and external_id in ('search-2','search-3')
+  order by published_at desc, id desc
+  limit 1;
+
+  v_visited_ids := array_append(v_visited_ids, v_first_id);
+
+  select id into v_second_id
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',v_first_published,v_first_id,1)
+  where source_key = 'search-test-source' and external_id in ('search-2','search-3');
+
+  if v_second_id is null then
+    raise exception 'FAIL: paging past the first equal-timestamp row should still return the second one';
+  end if;
+  if v_second_id = v_first_id then
+    raise exception 'FAIL: keyset pagination repeated the same row instead of advancing';
+  end if;
+  v_visited_ids := array_append(v_visited_ids, v_second_id);
+
+  if array_length(v_visited_ids, 1) <> 2 or (v_visited_ids[1] = v_visited_ids[2]) then
+    raise exception 'FAIL: expected exactly 2 distinct rows visited across the two pages';
+  end if;
+
+  raise notice 'PASS: keyset pagination with equal published_at timestamps visits each row exactly once, in a stable order';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Finding 1 (M3 second review): q must also search specialties and
+-- technologies, not just title/company/city.
+-- ---------------------------------------------------------------------
+
+do $$
+declare
+  v_count integer;
+  v_external_id text;
+begin
+  -- search-5's title/company/city contain none of 'KotlinUnique' — the
+  -- only possible match is the technologies array.
+  select count(*), max(external_id) into v_count, v_external_id
+  from public.search_offers('KotlinUnique',null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  if v_count <> 1 or v_external_id <> 'search-5' then
+    raise exception 'FAIL: q=KotlinUnique should match exactly search-5 via the technologies array, saw % row(s), external_id=%', v_count, v_external_id;
+  end if;
+
+  -- search-3's title is 'Stage Cybersécurité' (accented, different
+  -- spelling) — 'cybersecurity' cannot match via title/company/city, only
+  -- via the specialties array containing the literal slug.
+  select count(*), max(external_id) into v_count, v_external_id
+  from public.search_offers('cybersecurity',null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  if v_count <> 1 or v_external_id <> 'search-3' then
+    raise exception 'FAIL: q=cybersecurity should match exactly search-3 via the specialties array, saw % row(s), external_id=%', v_count, v_external_id;
+  end if;
+
+  raise notice 'PASS: q also searches specialties and technologies (technology-only and specialty-only matches)';
+end $$;
+
+-- ---------------------------------------------------------------------
+-- Finding 2 (M3 second review): defense-in-depth bounds inside
+-- search_offers itself, since anon can call the RPC directly and bypass
+-- GET /api/offers's Zod validation entirely. Every case below must
+-- degrade safely (no error, no crash, no unbounded/unexpected result) —
+-- never raise, since that would itself be a new way to disrupt the
+-- endpoint.
+-- ---------------------------------------------------------------------
+
+do $$
+declare
+  v_count integer;
+begin
+  -- q > 100 chars: truncated safely, not rejected — no error.
+  perform count(*) from public.search_offers(repeat('x', 100001),null,null,null,null,null,null,null,'newest',null,null,10);
+  -- city > 80 chars: same.
+  perform count(*) from public.search_offers(null,null,repeat('y', 500),null,null,null,null,null,'newest',null,null,10);
+  -- technology > 40 chars: same.
+  perform count(*) from public.search_offers(null,null,null,null,repeat('z', 500),null,null,null,'newest',null,null,10);
+  raise notice 'PASS: oversized q/city/technology values are truncated safely without error';
+end $$;
+
+do $$
+declare
+  v_count_all integer;
+  v_count_bad_country integer;
+  v_count_bad_specialty integer;
+  v_count_bad_work_mode integer;
+  v_count_bad_language integer;
+begin
+  select count(*) into v_count_all
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+
+  -- An undocumented country/specialty/workMode/language value is dropped
+  -- (treated as "no filter on this field") rather than erroring or being
+  -- trusted as a literal comparison value.
+  select count(*) into v_count_bad_country
+  from public.search_offers(null,'XX',null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  select count(*) into v_count_bad_specialty
+  from public.search_offers(null,null,null,'not-a-real-slug',null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  select count(*) into v_count_bad_work_mode
+  from public.search_offers(null,null,null,null,null,'flying',null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+  select count(*) into v_count_bad_language
+  from public.search_offers(null,null,null,null,null,null,null,'klingon','newest',null,null,10)
+  where source_key = 'search-test-source';
+
+  if v_count_bad_country <> v_count_all or v_count_bad_specialty <> v_count_all
+    or v_count_bad_work_mode <> v_count_all or v_count_bad_language <> v_count_all then
+    raise exception 'FAIL: an undocumented enum value should be dropped (same result as no filter), got country=%, specialty=%, workMode=%, language=% vs all=%',
+      v_count_bad_country, v_count_bad_specialty, v_count_bad_work_mode, v_count_bad_language, v_count_all;
+  end if;
+
+  -- An undocumented sort value defaults to 'newest' rather than erroring.
+  perform count(*) from public.search_offers(null,null,null,null,null,null,null,null,'oldest-first-nonsense',null,null,10);
+
+  raise notice 'PASS: undocumented country/specialty/workMode/language/sort values are safely dropped/defaulted, never erroring';
+end $$;
+
+do $$
+declare
+  v_count integer;
+begin
+  -- A raw `limit -5` would error in Postgres ("LIMIT must not be
+  -- negative") if not clamped; 0 and a huge value must also behave
+  -- safely (clamped to [1, 25], per "the server requests limit + 1" for
+  -- a max UI limit of 24).
+  select count(*) into v_count from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,-5);
+  if v_count = 0 then
+    raise exception 'FAIL: p_limit=-5 should clamp up to at least 1, not return zero rows unconditionally';
+  end if;
+  perform count(*) from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,0);
+  perform count(*) from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,1000000);
+  raise notice 'PASS: p_limit is safely clamped for negative, zero, and huge values — never a raw Postgres LIMIT error';
+end $$;
+
+do $$
+declare
+  v_count_no_cursor integer;
+  v_count_value_only integer;
+  v_count_id_only integer;
+begin
+  select count(*) into v_count_no_cursor
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,null,10)
+  where source_key = 'search-test-source';
+
+  -- Only p_cursor_value, no p_cursor_id: must be treated as "no cursor"
+  -- (page 1), not a half-defined comparison.
+  select count(*) into v_count_value_only
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',now(),null,10)
+  where source_key = 'search-test-source';
+  if v_count_value_only <> v_count_no_cursor then
+    raise exception 'FAIL: a cursor value with no id should be treated as no cursor, got % vs % with no cursor', v_count_value_only, v_count_no_cursor;
+  end if;
+
+  -- Only p_cursor_id, no p_cursor_value: same.
+  select count(*) into v_count_id_only
+  from public.search_offers(null,null,null,null,null,null,null,null,'newest',null,'11111111-1111-4111-8111-111111111111'::uuid,10)
+  where source_key = 'search-test-source';
+  if v_count_id_only <> v_count_no_cursor then
+    raise exception 'FAIL: a cursor id with no value should be treated as no cursor, got % vs % with no cursor', v_count_id_only, v_count_no_cursor;
+  end if;
+
+  raise notice 'PASS: a half-supplied cursor (value without id, or id without value) is treated as no cursor';
+end $$;
+
+reset role;
+
 rollback;

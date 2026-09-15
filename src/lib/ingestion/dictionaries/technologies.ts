@@ -45,3 +45,8 @@ export function classifyTechnologies(text: string): string[] {
   const matched = TECHNOLOGIES.filter((entry) => entry.pattern.test(text)).map((entry) => entry.canonical)
   return Array.from(new Set(matched))
 }
+
+/** Every canonical technology name this dictionary can produce — used to
+ * populate the `technology` filter's dropdown (src/components/offers/filters-panel.tsx)
+ * so a filter value always matches a real, exactly-cased array entry. */
+export const TECHNOLOGY_NAMES: readonly string[] = TECHNOLOGIES.map((entry) => entry.canonical)

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { classifyTechnologies, TECHNOLOGIES_DICTIONARY_VERSION } from './technologies'
+import { classifyTechnologies, TECHNOLOGIES_DICTIONARY_VERSION, TECHNOLOGY_NAMES } from './technologies'
+
+describe('TECHNOLOGY_NAMES', () => {
+  it('is a non-empty list with no duplicates', () => {
+    expect(TECHNOLOGY_NAMES.length).toBeGreaterThan(0)
+    expect(new Set(TECHNOLOGY_NAMES).size).toBe(TECHNOLOGY_NAMES.length)
+  })
+
+  it('every value is within the 40-character API bound for the technology filter', () => {
+    for (const name of TECHNOLOGY_NAMES) {
+      expect(name.length).toBeLessThanOrEqual(40)
+    }
+  })
+})
 
 describe('TECHNOLOGIES_DICTIONARY_VERSION', () => {
   it('is a positive integer', () => {

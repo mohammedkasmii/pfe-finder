@@ -139,3 +139,41 @@ extension once the project is live.
 See `.env.example` for the full list and rationale. New in M2:
 `SUPABASE_SERVICE_ROLE_KEY` — server-only, GitHub Actions secret only,
 never given a value in this file or in `.env.local`.
+
+## Search and offer experience (M3)
+
+### Rate limiting `GET /api/offers` and `/offers`
+
+Rate limiting uses [Upstash](https://upstash.com) Redis over its REST API
+(serverless-compatible — an in-process counter resets per Vercel function
+instance and provides no real protection), protecting both `GET
+/api/offers` and the `/offers` server page's own initial request (which
+calls the same search function directly, without an HTTP hop — otherwise
+it would bypass the API route's limiter entirely).
+
+**Mandatory in production**: `src/lib/env.ts` refuses to boot a
+production deployment unless `UPSTASH_REDIS_REST_URL` and
+`UPSTASH_REDIS_REST_TOKEN` are both set to a complete, valid pair (HTTPS
+URL, non-empty token). It stays optional only in local development and
+automated tests, where both may be left unset together — but setting only
+one of the two fails validation in every environment.
+
+1. Create a free Upstash Redis database.
+2. Copy its REST URL and token into `UPSTASH_REDIS_REST_URL` /
+   `UPSTASH_REDIS_REST_TOKEN` in `.env.local` (see `.env.example`).
+3. Leave both unset in development to run with rate limiting disabled —
+   the API still works normally. This is the default in local
+   development, CI, and this sandbox; no Upstash account has been created
+   for this milestone (`APP_ENV`/`VERCEL_ENV` here is never `production`).
+
+Once configured, the limiter still fails open at runtime: an unreachable
+or slow Redis call never blocks or breaks a request (see
+`src/lib/rate-limit/limiter.ts`) — the mandatory-in-production rule is
+about deployment-time configuration, not runtime availability.
+
+### Signed pagination cursors
+
+`GET /api/offers`'s `cursor` parameter is an opaque, HMAC-SHA256-signed
+token (`src/lib/offers/cursor.ts`), signed with `CURSOR_SECRET`
+(`.env.example`). Required in production; defaults to a fixed, clearly
+non-secret value in development.

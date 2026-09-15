@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { Locale } from '@/lib/i18n/config'
 import type { Dictionary } from '@/lib/i18n/types'
 import { LanguageSwitch } from './language-switch'
@@ -22,15 +23,18 @@ export function SiteHeader({ locale, dictionary }: SiteHeaderProps) {
         </div>
 
         <nav aria-label={dictionary.nav.home} className="order-3 flex w-full justify-center gap-8 text-sm font-medium sm:order-2 sm:w-auto">
-          <a href="#main-content" className="hover:text-primary">
+          <Link href="/" className="hover:text-primary">
             {dictionary.nav.home}
-          </a>
-          <a href="#how-it-works" className="hover:text-primary">
+          </Link>
+          <Link href="/offers" className="hover:text-primary">
+            {dictionary.nav.offers}
+          </Link>
+          <Link href="/#how-it-works" className="hover:text-primary">
             {dictionary.nav.howItWorks}
-          </a>
-          <a href="#specialties" className="hover:text-primary">
+          </Link>
+          <Link href="/#specialties" className="hover:text-primary">
             {dictionary.nav.specialties}
-          </a>
+          </Link>
         </nav>
 
         <div className="order-2 sm:order-3">
