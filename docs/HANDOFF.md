@@ -2,6 +2,44 @@
 
 Append new entries at the top beneath this introduction. Do not alter previous entries.
 
+## 2026-09-15 — Claude → Codex — M4 security and resilience audit complete
+
+M4 set to `REVIEW`. R4 and M5 left `BLOCKED`. Audited the full implementation against every mandatory control in `docs/SECURITY.md`; found and fixed one gap. Everything else was already implemented and covered by existing tests — recorded below rather than re-tested or duplicated.
+
+### Finding and correction
+
+- **`.github/workflows/ci.yml` had no job-level `timeout-minutes`** (unlike `collect.yml`, which already has 15). A hung step would otherwise run to GitHub's default 360-minute cap. Added `timeout-minutes: 20` to the `verify` job. Low-risk, additive, resilience-only change — no behavior change to any check it runs.
+
+### Audit results (already implemented and tested — no code changes)
+
+1. **RLS write denial (anon + authenticated).** `supabase/migrations/20260914010300_rls.sql` revokes all privileges from both `anon` and `authenticated` on `sources`/`offers`/`ingestion_runs`; only `anon` receives narrow, explicit `SELECT` grants back. `authenticated` gets zero grants on any of the three tables, so every write (and read) fails on privilege alone, independent of policy. `supabase/tests/rls.sql` exercises this mechanism directly (anon insert/update/delete all rejected); adding a byte-identical assertion under `authenticated` would duplicate coverage of the same `REVOKE ALL` statement, so none was added.
+2. **Search input / duplicate-parameter / injection / cursor-tampering safety.** `src/app/api/offers/route.ts` rejects duplicate query keys before parsing, `OffersQuerySchema` (`src/lib/offers/query-schema.ts`) is `.strict()` with bounded lengths/enums, `search_offers` (`supabase/migrations/20260914020000_search_offers_function.sql`) is a parameterized, `security invoker` SQL function with its own defense-in-depth bounds (tested directly in `supabase/tests/rls.sql` Part 6 against injection-shaped `q`, oversized values, undocumented enums, malformed limits, and half-supplied cursors), and `src/lib/offers/cursor.ts` HMAC-signs cursors and rejects any tamper/malformed/oversized value by returning `null`, never throwing on bad input.
+3. **Source adapter SSRF/allowlist.** `src/lib/ingestion/urls.ts`'s `validateAllowlistedHttpsUrl` requires HTTPS, rejects URL credentials, localhost, private IPv4 literals, and any non-exact-match host; `src/lib/sources/http-client.ts` re-validates on every redirect hop (manual redirect handling, bounded hop count). The SmartRecruiters adapter only ever calls this with the fixed, schema-validated `SOURCE_REGISTRY` allowlist — no user/candidate-supplied URL ever reaches a fetch call.
+4. **Malicious source HTML → safe plain text.** `src/lib/ingestion/html.ts` parses with JSDOM, removes script/style/form/iframe/object/embed/noscript elements outright, then reads only `textContent` (markup and event handlers never survive into stored text). Confirmed no `dangerouslySetInnerHTML`/`innerHTML` usage anywhere in `src/` — offer text renders through plain JSX interpolation only.
+5. **Outbound link HTTPS + allowlist.** `src/lib/offers/public-offer.ts` re-validates `source_url`/`apply_url` against that offer's specific source allowlist before the detail page ever sees them (mapping a failure to `null`, never throwing); `src/components/offers/apply-link.tsx` asserts `https://` again as a last line of defense and renders with `target="_blank" rel="noopener noreferrer"`.
+6. **Failed/partial collection preserves offers.** `src/lib/collector/run.ts` only calls `finalizeCompletedRun` (which deactivates missing offers) when `scanComplete` is true; any transient failure or thrown exception routes to `finalizeFailedRun`, which never touches offer status. Proven against a real Postgres instance in `supabase/tests/rls.sql` Part 2 (`finalize_failed_run` leaves offer status and `last_success_at` untouched) and Part 4 (a rejected/invalid finalize call — wrong run id, wrong source, already-finalized run — mutates nothing).
+7. **No credential/secret/description leakage in errors or logs.** `src/lib/ingestion/error-summary.ts`'s `boundedErrorSummary` strips URL credentials, query strings, standalone `password=`/`token=`-shaped assignments, and JWT/bearer patterns, collapses multiline content to one line, and truncates to 500 chars — used by both the collector (`run.ts`, `cli.ts`) and nowhere bypassed. `src/app/api/offers/route.ts` never logs or returns a raw database error; `IngestionDbError`/`SearchOffersError`/`GetOfferError` keep the raw cause on `.cause` only, never in `.message`. Grepped all of `src/app`, `src/components`, `src/lib` (excluding tests): the only `console.*` calls are in `src/lib/collector/cli.ts`, both already sanitized/bounded.
+8. **Production requires valid Supabase, cursor-signing, and Upstash config.** `src/lib/env.ts` throws `EnvValidationError` in production for a missing/malformed Supabase URL or anon key, a `CURSOR_SECRET` under 32 chars, or an absent/invalid Upstash pair — all via the one shared `parseUpstashConfig` (`src/lib/rate-limit/config.ts`) also used by the runtime limiter, so validation and runtime behavior can't drift. `VERCEL_ENV=production` is authoritative and can't be downgraded by `APP_ENV` (M3 correction, already regression-tested).
+9. **No service-role credential, collector client, or fixture data in browser code/production bundle.** `src/lib/db/public-client.ts` only ever imports `@supabase/supabase-js` and `../env` (asserted by its own test's import-line check); the service-role client (`src/lib/db/supabase-client.ts`) is never imported from `src/app` or `src/components` (confirmed by grep). `scripts/scan-production-bundle.mjs` scans `.next/server` for fixture flags/fictional data/fixture IDs — ran clean this round (109 files).
+10. **CSP/HSTS/frame/MIME/referrer/permissions headers.** `src/proxy.ts` sets a per-request nonced CSP (`frame-ancestors 'none'`, `object-src 'none'`, `upgrade-insecure-requests`, no `unsafe-inline`/`unsafe-eval` outside dev); `src/lib/security-headers.ts` (wired via `next.config.ts`) sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, a restrictive `Permissions-Policy`, and `Strict-Transport-Security` in production. Both have co-located tests (`src/proxy.test.ts`, `src/lib/security-headers.test.ts`).
+11. **GitHub workflow hygiene.** Both workflows declare `permissions: contents: read` at the top level (no elevated job permissions), pin every third-party action to a full commit SHA, and use `concurrency` groups. `collect.yml` (the only workflow holding the ingestion service-role credential) triggers only on `schedule`/`workflow_dispatch` — never `pull_request`/`pull_request_target` — and already had `timeout-minutes: 15`; `ci.yml` was missing its own timeout (see Finding above, now fixed).
+12. **Dependency vulnerabilities.** `pnpm audit --audit-level=moderate` — clean, no known vulnerabilities.
+
+### Verification (scoped per instruction)
+
+- `pnpm typecheck` — clean.
+- `pnpm lint` — clean.
+- `pnpm scan:secrets` — clean, 162 files.
+- `pnpm audit --audit-level=moderate` — clean, no known vulnerabilities.
+- Clean `pnpm build` — succeeded; `pnpm scan:production-bundle` — 109 files scanned, no fixture content found.
+- No src/migration/UI/header/routing changes were made, so per instruction: no unit test subset, no PostgreSQL/RLS suite, no collector suite, and no browser suite were run this round (self-review skill note: the security-review skill's diff-based analysis wasn't invoked, since the only diff is the one-line, risk-reducing CI timeout addition — the substantive work this round was auditing already-implemented, already-tested code, not writing new security-sensitive logic).
+
+### Remaining risks
+
+- None newly identified. All twelve mandatory-control areas were already correctly implemented and tested prior to this audit; the single correction (CI timeout) is process hygiene, not a vulnerability fix.
+
+Not committed, pushed, or deployed. M5 not started.
+
 ## 2026-09-15 — Codex — M3 accepted; M4 ready
 
 The responsive correction is accepted. The four-link mobile navigation wraps at 320px while preserving the desktop row and existing link behavior. Claude's targeted typecheck, lint, and four desktop/mobile overflow checks passed without weakening assertions.
